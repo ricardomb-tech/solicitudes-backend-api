@@ -1,12 +1,32 @@
+# =============================================================================
+# NOTA SOBRE VALORES POR DEFECTO (${VAR:-default}):
+#
+# Cada variable usada aquí tiene un valor por defecto IDÉNTICO al de
+# .env.example. Esto es lo que permite que el comando exigido literalmente
+# por el enunciado, "docker compose up --build", funcione en un clon recién
+# descargado del repositorio, INCLUSO ANTES de crear un archivo .env — que
+# es justamente el escenario en el que se ejecuta por primera vez.
+#
+# Si existe un .env real (recomendado para cualquier uso más allá de la
+# evaluación inmediata: `cp .env.example .env` y ajustar), sus valores tienen
+# prioridad sobre estos defaults, porque Compose sustituye ${VAR} usando el
+# entorno del shell y el archivo .env de nivel de proyecto ANTES de aplicar
+# el resultado a cada servicio.
+#
+# Los valores por defecto son credenciales de DESARROLLO ya públicas en
+# .env.example (nunca secretos reales) — no contradice "credenciales fuera
+# del código": en un despliegue real (AWS) estas vendrían de Secrets Manager
+# y nunca de un valor por defecto en este archivo (ver docs/aws/PROPUESTA-AWS.md).
+# =============================================================================
 services:
   db:
     image: postgres:16-alpine
     container_name: solicitudes-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-solicitudes_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-solicitudes_db}
     volumes:
       # Volumen nombrado (gestionado por Docker) para persistencia real de
       # los datos de Postgres: sobrevive a "down" (sin -v) y a recreaciones
@@ -15,7 +35,7 @@ services:
     healthcheck:
       # pg_isready es el comando oficial de Postgres para confirmar que el
       # servidor ya acepta conexiones (no solo que el proceso arrancó).
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solicitudes_user} -d ${POSTGRES_DB:-solicitudes_db}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -42,9 +62,23 @@ services:
     container_name: solicitudes-backend
     restart: unless-stopped
     env_file:
-      - .env
+      # required: false -> si no existe .env (clon recién descargado, sin
+      # "cp .env.example .env" todavía), Compose NO aborta: usa los defaults
+      # de "environment:" de abajo. Ver nota al inicio del archivo.
+      - path: .env
+        required: false
+    environment:
+      APP_NAME: ${APP_NAME:-solicitudes-api}
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://solicitudes_user:changeme_dev_password@db:5432/solicitudes_db}
     ports:
-      - "8000:8000"
+      # Solo localhost, no todas las interfaces: el backend es el punto de
+      # entrada de esta solución LOCAL, pero no debe quedar alcanzable desde
+      # otros equipos de la misma red (LAN/wifi compartida) sin que nadie lo
+      # haya decidido explícitamente. En AWS este rol lo cumple el ALB, detrás
+      # de HTTPS y WAF (ver docs/aws/PROPUESTA-AWS.md).
+      - "127.0.0.1:8000:8000"
     depends_on:
       db:
         # "service_healthy" (no solo "service_started"): el backend espera a
@@ -98,7 +132,17 @@ services:
     # `docker compose run --rm consumer`).
     restart: "no"
     env_file:
-      - .env
+      - path: .env
+        required: false
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      API_BASE_URL: ${API_BASE_URL:-http://backend:8000}
+      CONSUMER_NUM_REQUESTS: ${CONSUMER_NUM_REQUESTS:-10}
+      CONSUMER_TIMEOUT_CONNECT_S: ${CONSUMER_TIMEOUT_CONNECT_S:-3}
+      CONSUMER_TIMEOUT_READ_S: ${CONSUMER_TIMEOUT_READ_S:-10}
+      CONSUMER_MAX_RETRIES: ${CONSUMER_MAX_RETRIES:-3}
+      CONSUMER_BACKOFF_BASE_S: ${CONSUMER_BACKOFF_BASE_S:-0.5}
     depends_on:
       backend:
         # Espera a que el backend esté "ready" (BD incluida), no solo iniciado.
@@ -126,7 +170,10 @@ services:
     # aparezca mezclado en "docker compose ps".
     profiles: ["test"]
     env_file:
-      - .env
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://solicitudes_user:changeme_dev_password@db:5432/solicitudes_db}
     depends_on:
       db:
         condition: service_healthy
