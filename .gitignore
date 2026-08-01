@@ -1,0 +1,74 @@
+# ---------------------------------------------------------------------------
+# Bitácora personal de proceso — material de estudio para la sustentación,
+# NO es un entregable del repositorio (las decisiones formales viven en
+# docs/adr/, docs/ARQUITECTURA.md y docs/aws/PROPUESTA-AWS.md, que sí se
+# versionan).
+# ---------------------------------------------------------------------------
+docs/DECISIONES.md
+
+# ---------------------------------------------------------------------------
+# Secretos y configuración local  (REQ-D-06: credenciales fuera del repositorio)
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------------------------------------------------------------------
+# Testing / calidad
+# ---------------------------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+junit.xml
+
+# ---------------------------------------------------------------------------
+# Logs generados en runtime (los de ejemplo curados viven en docs/, versionados)
+# ---------------------------------------------------------------------------
+logs/
+*.log
+!docs/logs-ejecucion-ejemplo.log
+
+# ---------------------------------------------------------------------------
+# Datos de contenedores (nunca se versionan volúmenes)
+# ---------------------------------------------------------------------------
+pgdata/
+docker-compose.override.yml
+
+# ---------------------------------------------------------------------------
+# Material del enunciado (no es un entregable propio, no se redistribuye)
+# ---------------------------------------------------------------------------
+/Prueba Tecnica Backend.pdf
+
+# ---------------------------------------------------------------------------
+# Editores / SO
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
