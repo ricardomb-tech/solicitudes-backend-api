@@ -64,6 +64,7 @@ la honestidad técnica del documento).
 | [0012](0012-stage-de-pruebas-en-dockerfile.md) | Stage `test` independiente en el Dockerfile, excluido de producción | Aceptado | 4 |
 | [0013](0013-politica-de-reintentos-consumidor.md) | Clasificación transitorio/definitivo y backoff exponencial con jitter | Aceptado | 5 |
 | [0014](0014-consumidor-un-solo-lote.md) | El consumidor procesa un solo lote y termina (no es un bucle continuo) | Aceptado | 5 |
+| [0015](0015-defaults-en-compose-y-binding-localhost.md) | Valores por defecto en `docker-compose.yml` y publicación solo en localhost | Aceptado | Auditoría |
 
 > Se agregan nuevos ADR a medida que se toman decisiones equivalentes en los
 > bloques siguientes (formato de errores, máquina de estados, política de
