@@ -28,6 +28,8 @@ import structlog
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.exceptions import (
@@ -40,8 +42,17 @@ from app.core.exceptions import (
 logger = structlog.get_logger(__name__)
 
 # Traducción de excepción de dominio a código HTTP. Este diccionario es el
-# ÚNICO lugar del proyecto donde se decide qué código corresponde a qué
-# situación de negocio: ni los servicios ni los routers repiten esa decisión.
+# ÚNICO lugar del proyecto donde esa decisión se EJECUTA en tiempo de
+# ejecución: ni los servicios ni los routers contienen lógica que traduzca una
+# excepción a un código HTTP.
+#
+# Nota honesta: los routers (`api/v1/routers/solicitudes.py`) sí declaran
+# `responses={...}` con los mismos códigos, pero únicamente como metadato para
+# generar la documentación OpenAPI/Swagger — no participan en absoluto de la
+# decisión real, que ya se tomó y ejecutó aquí antes de que FastAPI serialice
+# la respuesta. Si un código de este diccionario cambiara, ese `responses=`
+# quedaría documentando un valor que ya no ocurre — es una inconsistencia de
+# documentación a vigilar manualmente, no de comportamiento.
 #
 # Justificación de cada código:
 #   409 Conflict  -> la petición es válida, pero choca con el estado actual del
@@ -163,6 +174,87 @@ def registrar_manejadores(app: FastAPI) -> None:
             titulo=str(exc.detail),
             correlation_id=correlation_id,
         )
+
+    @app.exception_handler(IntegrityError)
+    async def manejar_error_integridad(
+        request: Request, exc: IntegrityError
+    ) -> JSONResponse:
+        """
+        Violación de una restricción de la base de datos (CHECK o UNIQUE) que
+        llegó hasta el motor sin haber sido detectada antes por Pydantic ni
+        por la lógica de negocio.
+
+        Caso real que motiva este manejador: agregar un valor nuevo a un
+        catálogo en `app/domain/enums.py` actualiza la validación de Pydantic
+        de inmediato, pero `alembic revision --autogenerate` **no detecta**
+        cambios en restricciones `CHECK` — genera una migración vacía si se
+        olvida escribir a mano la que actualiza el `CHECK` (ver el docstring
+        de `_check_en_catalogo` en `app/models/solicitud.py`). Sin este
+        manejador, ese olvido produce un `500` opaco justo en el momento más
+        visible posible: una demostración en vivo. Con él, produce un `422`
+        con un mensaje que apunta a la causa real, sin exponer el nombre de
+        columnas o tablas al cliente (eso solo va al log, ver ADR-0008).
+
+        Se asume `422` (dato inválido) por ser el caso más probable en este
+        esquema —los tres `CHECK` existentes son de catálogo—, salvo que el
+        nombre de la restricción indique explícitamente unicidad, en cuyo
+        caso se responde `409` en vez de `500` (aunque en la práctica el
+        camino normal de duplicados ya se resuelve antes, vía `ON CONFLICT`,
+        sin llegar a lanzar esta excepción — ver ADR-0003).
+        """
+        nombre_restriccion = (
+            getattr(getattr(exc.orig, "diag", None), "constraint_name", None) or ""
+        )
+        es_unicidad = "unique" in nombre_restriccion.lower() or nombre_restriccion.endswith(
+            "_key"
+        )
+        codigo_http = (
+            status.HTTP_409_CONFLICT if es_unicidad else status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+        correlation_id = _obtener_correlation_id(request)
+
+        logger.warning(
+            "error_integridad_bd",
+            status=codigo_http,
+            restriccion=nombre_restriccion or "desconocida",
+        )
+        return _respuesta_error(
+            codigo_http=codigo_http,
+            tipo="conflicto_de_datos" if es_unicidad else "dato_invalido",
+            titulo=(
+                "El dato enviado no cumple una restricción de integridad de "
+                "la base de datos (por ejemplo, un valor de catálogo que ya "
+                "no está sincronizado con el esquema)."
+            ),
+            correlation_id=correlation_id,
+        )
+
+    @app.exception_handler(SQLAlchemyTimeoutError)
+    async def manejar_timeout_pool(
+        request: Request, exc: SQLAlchemyTimeoutError
+    ) -> JSONResponse:
+        """
+        Se agotó `pool_timeout` esperando una conexión libre del pool
+        (`app/db/session.py`).
+
+        Se traduce a `503 Service Unavailable` con `Retry-After`, no a `500`:
+        el servidor no falló procesando nada — está temporalmente saturado, y
+        es exactamente la semántica de 503. Al ser 503 con `Retry-After`, el
+        consumidor (`consumer/app/retry.py`) ya sabe tratarlo como transitorio
+        y reintentar con backoff, en vez de darlo por perdido.
+        """
+        correlation_id = _obtener_correlation_id(request)
+        logger.error("pool_agotado", status=503, exc_info=True)
+        respuesta = _respuesta_error(
+            codigo_http=status.HTTP_503_SERVICE_UNAVAILABLE,
+            tipo="servicio_saturado",
+            titulo=(
+                "El servicio está temporalmente saturado. Reintente en unos segundos."
+            ),
+            correlation_id=correlation_id,
+        )
+        respuesta.headers["Retry-After"] = "3"
+        return respuesta
 
     @app.exception_handler(Exception)
     async def manejar_error_no_controlado(
