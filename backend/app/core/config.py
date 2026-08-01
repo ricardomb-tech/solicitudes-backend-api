@@ -22,8 +22,18 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
 
+    # Directorio donde se persisten los logs en archivo (montado como volumen
+    # en docker-compose.yml). La salida por stdout es independiente de esto.
+    log_dir: str = "/app/logs"
+
     # Obligatoria: si no está definida, la app falla al arrancar (fail fast).
     database_url: str
+
+    # Tope de resultados por página en el listado. Evita que un cliente pida
+    # `?limit=1000000` y provoque una respuesta que agote la memoria del
+    # proceso: el límite lo impone el servidor, no la confianza en el cliente.
+    max_page_size: int = 100
+    default_page_size: int = 50
 
     model_config = SettingsConfigDict(
         env_file=".env",
