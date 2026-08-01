@@ -52,9 +52,22 @@ def ejecutar_con_reintentos(
 
         try:
             respuesta = cliente.request(metodo, ruta, json=json, headers=cabeceras)
-        except (httpx.ConnectError, httpx.TimeoutException, httpx.NetworkError) as exc:
-            # Errores de transporte (no llegó a haber respuesta HTTP): por
-            # definición son transitorios — el servidor pudo no estar
+        except httpx.TransportError as exc:
+            # httpx.TransportError es la clase base de TODOS los errores de
+            # transporte: ConnectError, TimeoutException, NetworkError, y
+            # también ProtocolError/RemoteProtocolError ("Server disconnected
+            # without sending a response") — este último ocurre cuando una
+            # conexión keep-alive reutilizada del pool de httpx es cerrada por
+            # el servidor justo antes de reutilizarse (Uvicorn cierra las
+            # conexiones inactivas a los 5s por defecto; con reintentos
+            # espaciados por el backoff de este mismo módulo, la ventana de
+            # carrera es real). Antes se capturaba solo un subconjunto
+            # (Connect/Timeout/Network), y ese error concreto escapaba sin
+            # capturar hasta abortar el lote completo — justo lo que REQ-C-07
+            # ("continuar su ejecución cuando una solicitud falle") prohíbe.
+            #
+            # Por definición, ningún error de transporte llegó a producir una
+            # respuesta HTTP: son transitorios — el servidor pudo no estar
             # disponible en este instante exacto, pero la petición en sí no
             # tiene nada de inválido.
             duracion_ms = round((time.perf_counter() - inicio) * 1000, 2)

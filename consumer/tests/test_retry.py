@@ -104,6 +104,31 @@ def test_error_de_conexion_se_reintenta(
     assert resultado.intentos_realizados == 2
 
 
+def test_error_de_protocolo_por_conexion_keepalive_cerrada_se_reintenta(
+    cliente_con_transporte_simulado: Callable,
+) -> None:
+    """
+    Reproduce el bug real encontrado en auditoría: `httpx.RemoteProtocolError`
+    ("Server disconnected without sending a response") es un `TransportError`
+    pero NO es subclase de `ConnectError`/`TimeoutException`/`NetworkError`.
+    Con el `except` original (esa tupla explícita) este error escapaba sin
+    capturar y abortaba el lote completo, violando REQ-C-07. Debe tratarse
+    como transitorio y reintentarse igual que un `ConnectError`.
+    """
+    manejador = _servidor_con_guion(
+        [
+            httpx.RemoteProtocolError("Server disconnected without sending a response"),
+            httpx.Response(201, json={"id": "x"}),
+        ]
+    )
+    cliente = cliente_con_transporte_simulado(manejador)
+
+    resultado = ejecutar_con_reintentos(cliente, "POST", "/solicitudes", json={})
+
+    assert resultado.exito is True
+    assert resultado.intentos_realizados == 2
+
+
 def test_agota_reintentos_y_reporta_fallo_no_definitivo(
     cliente_con_transporte_simulado: Callable,
 ) -> None:
