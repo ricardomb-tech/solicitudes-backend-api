@@ -1,0 +1,45 @@
+meta {
+  name: Crear solicitud
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{base_url}}/solicitudes
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "identificador_externo": "SOL-DEMO-{{$randomInt}}",
+    "tipo": "soporte_tecnico",
+    "nombre_solicitante": "Ana María Restrepo",
+    "correo": "ana.restrepo@institucion.edu.co",
+    "descripcion": "No puedo acceder al portal académico desde el lunes.",
+    "prioridad": "alta"
+  }
+}
+
+script:post-response {
+  if (res.status === 201) {
+    bru.setVar("solicitud_id", res.body.id);
+    bru.setVar("identificador_externo", res.body.identificador_externo);
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.estado: eq recibida
+}
+
+docs {
+  Crea una solicitud válida. El estado inicial ("recibida") y las fechas los
+  asigna el sistema; no se envían en el cuerpo (ver ADR-0002 / esquema
+  SolicitudCrear). Guarda el id devuelto en la variable de entorno
+  "solicitud_id" para las siguientes peticiones de la colección.
+}

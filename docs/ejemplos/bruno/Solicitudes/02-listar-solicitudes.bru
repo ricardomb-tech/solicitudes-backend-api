@@ -1,0 +1,25 @@
+meta {
+  name: Listar solicitudes (con filtros)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/solicitudes?estado=recibida&limit=10&offset=0
+  body: none
+  auth: none
+  params: {
+    estado: recibida,
+    limit: 10,
+    offset: 0
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Filtros combinables: estado, tipo, prioridad, identificador_externo.
+  Respuesta paginada: {total, limit, offset, items}.
+}

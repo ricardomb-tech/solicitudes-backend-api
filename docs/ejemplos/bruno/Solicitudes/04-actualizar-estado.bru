@@ -1,0 +1,32 @@
+meta {
+  name: Actualizar estado (transición válida)
+  type: http
+  seq: 4
+}
+
+patch {
+  url: {{base_url}}/solicitudes/{{solicitud_id}}/estado
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "estado": "en_proceso"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.estado: eq en_proceso
+}
+
+docs {
+  Transición válida: recibida -> en_proceso. Para ver el rechazo de una
+  transición inválida, cambiar el valor a "completada" y ejecutar ANTES de
+  pasar por "en_proceso": debe responder 409 con los estados permitidos.
+}

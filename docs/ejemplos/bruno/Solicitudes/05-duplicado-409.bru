@@ -1,0 +1,37 @@
+meta {
+  name: Crear duplicado (409 esperado)
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{base_url}}/solicitudes
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "identificador_externo": "{{identificador_externo}}",
+    "tipo": "academica",
+    "nombre_solicitante": "Otra Persona",
+    "correo": "otra.persona@institucion.edu.co",
+    "descripcion": "Intento de duplicado con el mismo identificador externo.",
+    "prioridad": "baja"
+  }
+}
+
+assert {
+  res.status: eq 409
+  res.body.tipo: eq solicitud_duplicada
+}
+
+docs {
+  Reutiliza el identificador_externo capturado por "Crear solicitud" para
+  demostrar el manejo atómico de duplicados (ver ADR-0003). Debe ejecutarse
+  DESPUÉS de esa petición.
+}

@@ -1,0 +1,37 @@
+meta {
+  name: Crear con datos inválidos (422 esperado)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{base_url}}/solicitudes
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "identificador_externo": "SOL-INVALIDO-001",
+    "tipo": "tipo_que_no_existe",
+    "nombre_solicitante": "Test",
+    "correo": "esto-no-es-un-correo",
+    "descripcion": "Prueba de validación.",
+    "prioridad": "baja"
+  }
+}
+
+assert {
+  res.status: eq 422
+  res.body.tipo: eq error_validacion
+}
+
+docs {
+  "tipo" no está en el catálogo permitido y "correo" no tiene formato válido:
+  ambos se rechazan antes de tocar la base de datos, con el detalle de cada
+  campo en la respuesta.
+}

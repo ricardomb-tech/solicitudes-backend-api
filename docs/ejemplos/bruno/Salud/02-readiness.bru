@@ -1,0 +1,20 @@
+meta {
+  name: Readiness
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{base_url}}/health/ready
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Verifica la conexión con PostgreSQL. Devuelve 503 si la base de datos no
+  responde (ver docs/adr/0010-liveness-readiness-separados.md).
+}
