@@ -28,17 +28,11 @@ docker compose up --build
 
 Tres servicios en contenedores independientes, orquestados con Docker Compose:
 
-```
-                 ┌──────────────┐        ┌──────────────┐
-  Cliente HTTP → │   backend    │ ─────→ │      db      │
- (Swagger/curl/  │ FastAPI+Uv.  │  SQL   │ PostgreSQL 16 │
-  Bruno/consumer)│  puerto 8000 │        │ (red interna, │
-                 └──────┬───────┘        │  sin exponer) │
-                        ↑                └──────────────┘
-                        │ HTTP (health/ready)
-                 ┌──────┴───────┐
-                 │   consumer   │  (1 lote, se ejecuta y termina)
-                 └──────────────┘
+```mermaid
+flowchart LR
+    Cliente["Cliente HTTP\n(Swagger/curl/Bruno)"] -->|"puerto 8000"| Backend
+    Backend["backend\nFastAPI + Uvicorn"] -->|SQL| DB[("db\nPostgreSQL 16\nred interna, sin exponer")]
+    Consumer["consumer\n(1 lote, se ejecuta y termina)"] -->|"HTTP /health/ready"| Backend
 ```
 
 El backend está organizado en capas (`api/routers` → `services` →

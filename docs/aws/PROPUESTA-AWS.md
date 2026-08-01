@@ -62,10 +62,11 @@ flowchart TB
 
 Security groups referenciados entre sí, nunca por CIDR abierto internamente:
 
-```
-SG-ALB : 443/80 desde 0.0.0.0/0 (único punto abierto)
-SG-ECS : puerto app SOLO desde SG-ALB
-SG-RDS : 5432 SOLO desde SG-ECS
+```mermaid
+flowchart LR
+    Internet(["0.0.0.0/0"]) -->|"443/80"| SGALB["SG-ALB"]
+    SGALB -->|"puerto app"| SGECS["SG-ECS"]
+    SGECS -->|"5432"| SGRDS["SG-RDS"]
 ```
 
 Aunque algo obtuviera una IP dentro de la VPC, no alcanza RDS sin pasar por un servicio con el SG correcto: la segmentación es estructural. Subredes: **pública** (solo ALB), **privada** (ECS, sin IP pública), **aislada** (RDS, sin ruta a Internet).
@@ -85,4 +86,18 @@ Agregar un servicio nuevo = una *task definition* + *target group* + una regla d
 
 ---
 
-*Flujograma mínimo exigido, forma textual:* Usuario → Frontend → HTTPS+Token → DNS/WAF → ALB → {Servicio de Solicitudes | Otros backends} → PostgreSQL privado (RDS Multi-AZ); Servicios backend → Secrets Manager / CloudWatch / X-Ray.
+## 7. Flujograma mínimo exigido
+
+```mermaid
+flowchart TB
+    Usuario --> Frontend --> HTTPSToken["HTTPS + Token"] --> DNSWAF["DNS / WAF"] --> Entrada["API Gateway o Load Balancer"]
+    Entrada --> SvcA["Servicio A"]
+    Entrada --> SvcB["Servicio B"]
+    Entrada --> Otros["Otros servicios"]
+    SvcA --> RDS[("PostgreSQL privado")]
+    SvcB --> RDS
+    Otros --> RDS
+    SvcA --> Secretos["Gestión de secretos"]
+    SvcA --> Metricas["Logs, métricas y alertas"]
+    SvcA --> Traza["Trazabilidad"]
+```
