@@ -2,10 +2,14 @@
 Logging estructurado JSON del consumidor.
 
 Este archivo es intencionalmente muy similar a `backend/app/core/logging.py`.
-No se extrajo a un paquete compartido entre ambos servicios: ver la
-justificación de "por qué NO compartir código entre servicios independientes"
-en el README/ADR de este bloque. La duplicación aquí es small y deliberada,
-no un descuido.
+No se extrajo a un paquete compartido entre ambos servicios (ver ADR-0016,
+que además señala explícitamente que la justificación de "independencia entre
+servicios" aplica con más fuerza a dominio de negocio con contrato HTTP de
+por medio —como los catálogos— que a infraestructura interna sin ningún
+contrato que la desacople, como este archivo). La duplicación aquí es
+pequeña y deliberada, no un descuido, pero se acepta con ese matiz: si la
+política de rotación de logs cambiara, hay que recordar tocar los dos
+archivos, y nada lo verifica automáticamente.
 """
 import logging
 import logging.handlers
@@ -16,6 +20,12 @@ from typing import Any
 import structlog
 
 from app.core.config import get_settings
+
+# Mismos valores que backend/app/core/logging.py (10 MB x 5 archivos). Se
+# nombran aquí también, en vez de dejarlos como literales inline, para que
+# comparar ambos archivos y detectar una futura divergencia sea trivial.
+_LOG_FILE_MAX_BYTES = 10 * 1024 * 1024
+_LOG_FILE_BACKUPS = 5
 
 
 def _agregar_servicio(_logger: Any, _metodo: str, evento: dict[str, Any]) -> dict[str, Any]:
@@ -53,8 +63,8 @@ def configurar_logging() -> None:
         directorio.mkdir(parents=True, exist_ok=True)
         manejador_archivo = logging.handlers.RotatingFileHandler(
             directorio / "consumer.log",
-            maxBytes=10 * 1024 * 1024,
-            backupCount=5,
+            maxBytes=_LOG_FILE_MAX_BYTES,
+            backupCount=_LOG_FILE_BACKUPS,
             encoding="utf-8",
         )
         manejador_archivo.setFormatter(formateador)

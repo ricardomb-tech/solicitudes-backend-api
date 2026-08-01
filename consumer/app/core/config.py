@@ -19,9 +19,9 @@ class Settings(BaseSettings):
     # ese mismo APP_NAME aquí también (por convención de nombre de campo →
     # nombre de variable), y los logs del consumidor se identificarían
     # incorrectamente como "solicitudes-api" — un bug real detectado al
-    # verificar la ejecución conjunta (ver bitácora, Bloque 5). Se usa una
-    # variable con nombre propio, ausente en .env.example, así que el default
-    # de abajo siempre se aplica.
+    # verificar la ejecución de los tres servicios juntos por primera vez. Se
+    # usa una variable con nombre propio, ausente en .env.example, así que el
+    # default de abajo siempre se aplica.
     app_name: str = Field(default="solicitudes-consumer", validation_alias="CONSUMER_APP_NAME")
     log_level: str = "INFO"
     log_dir: str = "/app/logs"

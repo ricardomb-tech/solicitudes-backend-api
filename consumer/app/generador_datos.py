@@ -3,11 +3,10 @@ Generación del lote de solicitudes que el consumidor envía en cada ejecución.
 
 Los valores de catálogo (tipo, prioridad) se repiten aquí como constantes de
 texto plano, en vez de importarse del backend. Es una duplicación deliberada:
-ver la justificación completa en el ADR de este bloque ("por qué el
-consumidor no comparte código de dominio con el backend"). En resumen: son dos
-servicios independientes que se integran únicamente por su contrato HTTP
-público — igual que lo haría un sistema externo real, que jamás tendría
-acceso al código Python interno del backend.
+ver ADR-0016 para la justificación completa. En resumen: son dos servicios
+independientes que se integran únicamente por su contrato HTTP público —
+igual que lo haría un sistema externo real, que jamás tendría acceso al
+código Python interno del backend.
 """
 from __future__ import annotations
 
@@ -28,8 +27,8 @@ def generar_lote(cantidad: int) -> list[dict]:
     manejo de conflicto (409) exigido por el enunciado — sin depender de que
     dos ejecuciones distintas coincidan por casualidad en el mismo
     identificador. Es una decisión consciente de diseño para que los "logs de
-    una ejecución de ejemplo" (entregable del Bloque 6) muestren el caso de
-    duplicado sin artificios.
+    una ejecución de ejemplo" (uno de los entregables de esta prueba, ver
+    docs/logs-ejecucion-ejemplo.log) muestren el caso de duplicado sin artificios.
     """
     id_ejecucion = uuid.uuid4().hex[:8]
     lote = [

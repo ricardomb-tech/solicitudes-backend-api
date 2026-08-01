@@ -12,10 +12,11 @@ cual sería no determinista e imposible de reproducir de forma fiable.
 
 `httpx.MockTransport` reemplaza la capa de transporte de red del cliente
 httpx por una función de Python controlada por el test, sin abrir ningún
-socket real. Es el mismo principio que se aplicó en el Bloque 4 del backend
-para simular una base de datos caída (un doble de prueba en el punto exacto
-de la dependencia externa), aplicado aquí al cliente HTTP saliente en lugar
-de a la sesión de base de datos.
+socket real. Es el mismo principio que se aplicó en las pruebas del backend
+(`backend/tests/test_health.py`, `test_errores.py`) para simular una base de
+datos caída (un doble de prueba en el punto exacto de la dependencia
+externa), aplicado aquí al cliente HTTP saliente en lugar de a la sesión de
+base de datos.
 """
 from collections.abc import Callable
 
