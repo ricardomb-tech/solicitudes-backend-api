@@ -54,8 +54,13 @@ máquina de estados y secuencias de concurrencia/reintentos— está en
 
 ## Ejecutar, detener y probar
 
+`docker compose up --build` funciona **incluso sin este primer paso**
+(Compose usa valores por defecto de desarrollo si no existe `.env`, ver
+[ADR-0015](docs/adr/0015-defaults-en-compose-y-binding-localhost.md)); se
+recomienda igual para cualquier uso más allá de la evaluación inmediata.
+
 ```bash
-# 1. Configurar variables de entorno
+# 1. Configurar variables de entorno (recomendado, no obligatorio)
 cp .env.example .env
 
 # 2. Levantar la solución completa (db + backend + consumer)
@@ -93,16 +98,17 @@ despliegan, ver [`docs/adr/0012`](docs/adr/0012-stage-de-pruebas-en-dockerfile.m
 y **no** se levantan con `docker compose up` (perfil `test` dedicado):
 
 ```bash
-# Backend: 49 pruebas contra PostgreSQL real (no SQLite, ver ADR-0011),
-# incluida la verificación de concurrencia con 20 hilos simultáneos.
+# Backend: 60 pruebas contra PostgreSQL real (no SQLite, ver ADR-0011),
+# incluida la verificación de concurrencia con 20 hilos simultáneos y 11
+# pruebas unitarias de la máquina de estados sin base de datos (ver ADR-0017).
 docker compose --profile test run --rm backend-tests
 
-# Consumidor: 16 pruebas de la política de reintentos con httpx.MockTransport
+# Consumidor: 17 pruebas de la política de reintentos con httpx.MockTransport
 # (backoff, distinción transitorio/definitivo, Retry-After, correlation-id).
 docker compose --profile test run --rm consumer-tests
 ```
 
-Resultado esperado: `49 passed` (97% cobertura) y `16 passed`.
+Resultado esperado: `60 passed` (95% cobertura) y `17 passed`.
 
 ## Variables de entorno
 
@@ -197,6 +203,8 @@ archivo, con alternativas descartadas y consecuencias. Las más relevantes:
 | [0010](docs/adr/0010-liveness-readiness-separados.md) | `/health` (liveness) nunca consulta la BD; `/health/ready` sí — evita reinicios en bucle ante una caída de BD |
 | [0011](docs/adr/0011-estrategia-de-pruebas-postgres-real.md) | Pruebas contra PostgreSQL real, no SQLite: la concurrencia y los `CHECK` dependen del motor |
 | [0013](docs/adr/0013-politica-de-reintentos-consumidor.md) | Reintentos por transitorio/definitivo (no "4xx/5xx" literal: 429 se reintenta), backoff exponencial con jitter |
+| [0015](docs/adr/0015-defaults-en-compose-y-binding-localhost.md) | `docker compose up --build` funciona sin `.env` previo (defaults en Compose); backend solo en `127.0.0.1` |
+| [0017](docs/adr/0017-maquina-de-estados-de-la-solicitud.md) | Máquina de estados de la solicitud: transiciones válidas, estados terminales, idempotencia |
 
 ## Limitaciones conocidas
 
@@ -217,7 +225,8 @@ archivo, con alternativas descartadas y consecuencias. Las más relevantes:
   tiene protección real ante concurrencia).
 - **El consumidor duplica constantes de catálogo** (`tipo`, `prioridad`) en
   vez de importarlas del backend — decisión deliberada de independencia entre
-  servicios (ver bitácora, Bloque 5), no un descuido.
+  servicios (dos servicios que se integran solo por su contrato HTTP, no por
+  código Python compartido), no un descuido.
 
 ## Posibles mejoras
 
@@ -261,7 +270,7 @@ archivo, con alternativas descartadas y consecuencias. Las más relevantes:
 | Credenciales fuera del código | `.env` gitignored, `alembic.ini` sin `sqlalchemy.url` |
 | `.gitignore` | [`.gitignore`](.gitignore) |
 | Logs estructurados JSON con correlación | `app/core/logging.py`, `app/core/middleware.py` ([ADR-0009](docs/adr/0009-observabilidad-logs-json-correlacion.md)) |
-| Pruebas: creación válida/inválida/duplicados/consultas/estado/salud | `backend/tests/` (49 pruebas) |
+| Pruebas: creación válida/inválida/duplicados/consultas/estado/salud | `backend/tests/` (60 pruebas, incluidas 11 unitarias de la máquina de estados sin BD) |
 | Repositorio con commits descriptivos | `git log --oneline` (Conventional Commits) |
 | Logs de ejecución de ejemplo | [`docs/logs-ejecucion-ejemplo.log`](docs/logs-ejecucion-ejemplo.log) |
 | Ejemplos de consumo | [`docs/ejemplos/bruno/`](docs/ejemplos/bruno/) + sección de arriba |
