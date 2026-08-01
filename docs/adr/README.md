@@ -21,7 +21,7 @@ por Michael Nygard y es el estándar de facto en la industria.
 - **Filtra ruido**: no todo es un ADR. Se documenta aquí solo lo que es difícil
   o costoso de revertir y tiene alternativas reales que alguien podría
   razonablemente preferir. Decisiones de estilo o detalles de implementación
-  van en comentarios de código o en la bitácora (`docs/DECISIONES.md`), no aquí.
+  van en comentarios de código, no aquí.
 
 ## Plantilla
 
@@ -65,7 +65,10 @@ la honestidad técnica del documento).
 | [0013](0013-politica-de-reintentos-consumidor.md) | Clasificación transitorio/definitivo y backoff exponencial con jitter | Aceptado | 5 |
 | [0014](0014-consumidor-un-solo-lote.md) | El consumidor procesa un solo lote y termina (no es un bucle continuo) | Aceptado | 5 |
 | [0015](0015-defaults-en-compose-y-binding-localhost.md) | Valores por defecto en `docker-compose.yml` y publicación solo en localhost | Aceptado | Auditoría |
+| [0016](0016-duplicacion-deliberada-entre-servicios.md) | Duplicación deliberada de catálogos entre backend y consumidor | Aceptado | Auditoría |
+| [0017](0017-maquina-de-estados-de-la-solicitud.md) | Máquina de estados explícita para el ciclo de vida de la solicitud | Aceptado | 2 |
 
-> Se agregan nuevos ADR a medida que se toman decisiones equivalentes en los
-> bloques siguientes (formato de errores, máquina de estados, política de
-> reintentos del consumidor, ALB vs. API Gateway en AWS, etc.).
+> La justificación de ALB sobre API Gateway está cubierta en
+> `docs/aws/PROPUESTA-AWS.md` (sección "Servicios y función de cada uno"), no
+> como ADR aparte: es una decisión de la propuesta de despliegue, no del
+> código de este repositorio.

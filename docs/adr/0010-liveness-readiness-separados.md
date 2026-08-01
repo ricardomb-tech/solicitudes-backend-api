@@ -50,9 +50,10 @@ de que exista determinado dato.
   group* del ALB apunta a `/health/ready`, de modo que el balanceador retira una
   tarea que perdió la conexión a RDS sin destruirla, dándole oportunidad de
   recuperarse.
-- `docker-compose.yml` puede usar `/health` como healthcheck del contenedor y el
-  consumidor puede esperar a `/health/ready` antes de empezar a enviar
-  peticiones (Bloque 5).
+- `docker-compose.yml` usa `/health/ready` como healthcheck del backend, y el
+  servicio `consumer` declara `depends_on: backend: condition: service_healthy`
+  sobre ese mismo healthcheck — no empieza a enviar peticiones hasta que el
+  backend puede realmente atenderlas.
 
 **Costo asumido:**
 - Dos endpoints en lugar de uno, y la necesidad de explicar la diferencia a

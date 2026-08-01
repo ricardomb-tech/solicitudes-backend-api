@@ -1,12 +1,11 @@
 # Arquitectura del sistema
 
-> Convención de esta prueba: se usa la notación **C4** (Contexto → Contenedores
-> → Componentes) simplificada, más diagramas de secuencia para los dos flujos
-> que concentran la mayor complejidad de negocio (concurrencia en la creación,
-> y política de reintentos del consumidor). Cada diagrama indica qué parte ya
-> está **implementada** y qué parte es **diseño planeado** para bloques
-> siguientes, para que este documento sea honesto sobre el estado real del
-> proyecto en cada momento (se actualiza a medida que avanza).
+> Convención de esta prueba: se usa la notación **C4** (Contexto → Contenedores)
+> simplificada, más diagramas de secuencia para los dos flujos que concentran
+> la mayor complejidad de negocio (concurrencia en la creación, y política de
+> reintentos del consumidor). Todo lo descrito en este documento está
+> implementado y verificado — ver la sección final para la evidencia de cada
+> parte.
 
 ## 1. Diagrama de contexto (C4 – Nivel 1)
 
@@ -35,11 +34,11 @@ C4Context
 flowchart TB
     subgraph host["Host Docker — docker compose up --build"]
         subgraph net["Red interna: solicitudes-net (bridge)"]
-            backend["backend\nFastAPI + Uvicorn\npuerto 8000\n(estado: implementado, Bloque 1)"]
-            db[("db\nPostgreSQL 16-alpine\nvolumen: pgdata\n(estado: implementado, Bloque 1)")]
-            consumer["consumer\nservicio simulador (1 lote, restart: no)\n(estado: implementado, Bloque 5)"]
+            backend["backend\nFastAPI + Uvicorn\npuerto 8000"]
+            db[("db\nPostgreSQL 16-alpine\nvolumen: pgdata")]
+            consumer["consumer\nservicio simulador (1 lote, restart: no)"]
         end
-        logs[("volumen: backend-logs\n(estado: implementado, Bloque 1)")]
+        logs[("volumen: backend-logs")]
     end
 
     cliente["Cliente HTTP\n(Swagger / curl / Postman / Bruno)"]
@@ -51,14 +50,14 @@ flowchart TB
     consumer -. "depends_on: backend healthy (via /health/ready)" .-> backend
 ```
 
-**Nota de diseño verificada empíricamente (Bloque 1):** `db` no publica el
+**Nota de diseño verificada empíricamente:** `db` no publica el
 puerto 5432 al host — solo es alcanzable desde `backend` dentro de la red
 `solicitudes-net`. Es la misma restricción que exige la sección de AWS
 ("PostgreSQL deberá permanecer en una red privada"), aplicada aquí ya en el
 entorno local para que el hábito y el diseño sean uno solo, no dos mundos
 distintos.
 
-## 3. Modelo de datos (diagrama entidad-relación) — implementado (Bloque 2)
+## 3. Modelo de datos (diagrama entidad-relación) — implementado
 
 ```mermaid
 erDiagram
@@ -81,7 +80,7 @@ erDiagram
 compuesto `(estado, tipo, prioridad)` (filtro combinado del listado);
 `(fecha_creacion DESC)` (orden por defecto).
 
-### Máquina de estados de `estado` (implementada y aplicada — Bloque 3)
+### Máquina de estados de `estado` (implementada y aplicada)
 
 ```mermaid
 stateDiagram-v2
@@ -137,7 +136,7 @@ sequenceDiagram
     Note over C1,C2: Exactamente una de las dos recibe 201.<br/>La otra recibe 409, nunca un 500.
 ```
 
-## 5. Diagrama de secuencia — consumidor con reintentos (implementado, Bloque 5)
+## 5. Diagrama de secuencia — consumidor con reintentos (implementado)
 
 ```mermaid
 sequenceDiagram
@@ -165,16 +164,18 @@ sequenceDiagram
     Note over Cons: 409 es definitivo → NO se reintenta.<br/>Se registra el fallo y se continúa<br/>(el consumidor nunca aborta el lote completo).
 ```
 
-## 6. Estado de avance de este documento
+## 6. Estado de este documento
 
-| Sección | Estado |
+Todas las secciones anteriores describen comportamiento **implementado y
+verificado**, no diseño pendiente:
+
+| Sección | Verificación |
 |---|---|
-| Contexto | Vigente desde Bloque 0 |
-| Contenedores | Refleja el estado real verificado en Bloque 1 |
-| Modelo de datos / ER | **Implementado y verificado** contra el esquema real de PostgreSQL (Bloque 2) |
-| Máquina de estados | **Implementada y verificada** (Bloque 3): transición inválida devuelve 409 indicando los estados alcanzables |
-| Secuencia de concurrencia | **Implementada y verificada empíricamente** (Bloque 2): 20 hilos simultáneos → 1 creación, 19 conflictos, 0 excepciones. Se convierte en test automatizado en Bloque 4 |
-| Secuencia del consumidor | **Implementada y verificada**: 16 tests con `httpx.MockTransport` + ejecución real en `docker compose up` (10 éxitos, 1 conflicto 409, 0 fallos transitorios) |
+| Contenedores | `docker compose ps` — los tres servicios arrancan en el orden documentado |
+| Modelo de datos / ER | Esquema real de PostgreSQL inspeccionado con `\d solicitudes` |
+| Máquina de estados | `backend/tests/test_actualizar_estado.py` — transición inválida devuelve 409 indicando los estados alcanzables |
+| Secuencia de concurrencia | `backend/tests/test_concurrencia.py` — 20 hilos simultáneos → 1 creación, 19 conflictos, 0 excepciones |
+| Secuencia del consumidor | `consumer/tests/test_retry.py` (16 tests con `httpx.MockTransport`) + ejecución real en `docker compose up` (10 éxitos, 1 conflicto 409, 0 fallos transitorios) |
 
 Ver `docs/adr/` para la justificación detallada de cada decisión referenciada
-aquí, y `docs/DECISIONES.md` para la bitácora narrativa del proceso completo.
+aquí.

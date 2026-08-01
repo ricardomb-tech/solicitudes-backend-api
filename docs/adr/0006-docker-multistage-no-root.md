@@ -40,7 +40,8 @@ ejecutan como `root` si no se indica lo contrario.
 
 **A favor:**
 - Verificado empíricamente: `docker compose exec backend whoami` devuelve
-  `appuser` (uid 999), no `root` (ver bitácora, Bloque 1).
+  `appuser` (uid 999), no `root` — reproducible por cualquiera con la
+  solución en ejecución.
 - Menor superficie de ataque e imagen más liviana en el artefacto que
   realmente se despliega.
 - El costo de compilación (instalar `build-essential`, ~170s la primera vez)

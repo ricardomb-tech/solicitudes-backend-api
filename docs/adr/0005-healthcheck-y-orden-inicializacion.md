@@ -36,10 +36,12 @@ todo arranque en frío.
 **A favor:**
 - El arranque en frío (`docker compose down -v && docker compose up --build`)
   es determinístico: el backend siempre arranca después de que `db` reporta
-  `healthy`, verificado empíricamente (ver bitácora, Bloque 1).
+  `healthy`, verificado empíricamente inspeccionando `docker compose logs`
+  en un arranque en frío (el orden `db Healthy` → `backend Starting` es
+  visible directamente en la salida de Compose).
 - El mismo patrón (`healthcheck` + `condition: service_healthy`) se reutiliza
-  en el Bloque 5 para que el `consumer` espere a que el `backend` esté listo
-  antes de empezar a enviar peticiones.
+  para que el servicio `consumer` espere a que `backend` esté listo antes de
+  empezar a enviar peticiones (ver `docker-compose.yml`).
 
 **Costo asumido:**
 - Un arranque en frío tarda algunos segundos más (`start_period` +
