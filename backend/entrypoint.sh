@@ -12,9 +12,17 @@
 #
 # Nota sobre entornos productivos: en AWS este paso se ejecutaría como una
 # tarea de migración independiente y previa al despliegue, no en el arranque de
-# cada réplica — de lo contrario N réplicas intentarían migrar en paralelo.
-# Alembic toma un bloqueo sobre su tabla de versiones, así que es seguro, pero
-# separar el paso hace el despliegue más explícito y auditable.
+# cada réplica — de lo contrario N réplicas intentarían migrar en paralelo. A
+# diferencia de lo que una versión anterior de este comentario afirmaba,
+# Alembic NO toma ningún bloqueo por sí solo: el bloqueo de fila sobre
+# "alembic_version" ocurre en el UPDATE final, DESPUÉS del DDL, así que dos
+# réplicas migrando a la vez sí pueden chocar (una falla con "ya existe" al
+# hacer commit la otra). Por eso `migrations/env.py` toma explícitamente un
+# advisory lock de PostgreSQL antes de aplicar cualquier migración: con él,
+# la segunda réplica espera en vez de fallar. Aun así, separar el paso sigue
+# siendo lo correcto para un despliegue real: más explícito, más auditable, y
+# sin acoplar el arranque de cada réplica a permisos de escritura DDL sobre
+# la base de datos.
 # =============================================================================
 set -e
 
