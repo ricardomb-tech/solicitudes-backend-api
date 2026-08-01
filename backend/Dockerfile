@@ -41,10 +41,13 @@ ENV PATH=/home/appuser/.local/bin:$PATH \
 COPY . .
 
 RUN mkdir -p /app/logs \
+    && chmod +x /app/entrypoint.sh \
     && chown -R appuser:appuser /app /home/appuser/.local
 
 USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# El entrypoint aplica las migraciones de Alembic antes de arrancar Uvicorn,
+# de modo que la API nunca atiende peticiones contra un esquema desactualizado.
+CMD ["/app/entrypoint.sh"]
