@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: solicitudes-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Volumen nombrado (gestionado por Docker) para persistencia real de
+      # los datos de Postgres: sobrevive a "down" (sin -v) y a recreaciones
+      # del contenedor. REQ-T-05 / REQ-D-05.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready es el comando oficial de Postgres para confirmar que el
+      # servidor ya acepta conexiones (no solo que el proceso arrancó).
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - solicitudes-net
+    # Deliberadamente sin "ports": en este proyecto Postgres solo debe ser
+    # alcanzable desde otros contenedores de la red interna de Compose,
+    # coherente con la restricción de la propuesta AWS de que la base de
+    # datos nunca se expone directamente. Para inspeccionar la BD con un
+    # cliente SQL local, usar `docker compose exec db psql -U ... ` o un
+    # docker-compose.override.yml no versionado que agregue el mapeo de puerto.
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: solicitudes-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        # "service_healthy" (no solo "service_started"): el backend espera a
+        # que Postgres reporte healthy, no solo a que el contenedor arranque.
+        # Sin esto, el backend fallaría su primera conexión en un arranque en
+        # frío, porque Postgres tarda unos segundos en aceptar conexiones
+        # después de que el contenedor inicia.
+        condition: service_healthy
+    volumes:
+      # Persistencia de logs más allá del ciclo de vida del contenedor
+      # (REQ-D-05), en paralelo a la salida por stdout que consume
+      # `docker compose logs -f`.
+      - backend-logs:/app/logs
+    networks:
+      - solicitudes-net
+
+networks:
+  solicitudes-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  backend-logs:
