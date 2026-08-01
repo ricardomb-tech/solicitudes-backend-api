@@ -74,8 +74,16 @@ class SolicitudCrear(BaseModel):
     # del RFC en lugar de una expresión regular casera (que inevitablemente
     # rechaza direcciones válidas o acepta inválidas).
     correo: EmailStr = Field(description="Correo válido de contacto.")
+    # max_length=4000: sin este límite (encontrado en auditoría), era el único
+    # campo de texto del esquema sin cota superior. Un cliente podía enviar una
+    # descripción de decenas de MB, que Starlette bufferiza completa en memoria
+    # antes de validar — con pocas peticiones concurrentes, agota la memoria
+    # del proceso; y en GET /solicitudes, N filas con descripciones así de
+    # grandes amplifican una petición trivial en una respuesta de gigabytes.
     descripcion: str = Field(
-        min_length=1, description="Detalle del requerimiento o incidente."
+        min_length=1,
+        max_length=4000,
+        description="Detalle del requerimiento o incidente.",
     )
     prioridad: Prioridad = Field(description="Nivel de atención requerido.")
 

@@ -7,7 +7,6 @@ from sqlalchemy import (
     DateTime,
     Index,
     String,
-    Text,
     func,
     text,
 )
@@ -23,9 +22,27 @@ def _check_en_catalogo(columna: str, enum_cls: type) -> str:
     Construye la expresión SQL de un CHECK a partir del Enum de dominio.
 
     Se genera desde el Enum en lugar de escribir la lista de valores a mano
-    para que exista una sola fuente de verdad (app/domain/enums.py): si se
-    agrega un valor al catálogo, la restricción de la base de datos se deriva
-    automáticamente y no puede quedar desincronizada del código.
+    para que exista una sola fuente de verdad (app/domain/enums.py) en el
+    CÓDIGO: si se agrega un valor al catálogo, esta función ya produce la
+    expresión SQL correcta la próxima vez que se ejecute.
+
+    ADVERTENCIA REAL, encontrada en auditoría — leer antes de agregar un
+    valor de catálogo en vivo (p. ej. durante la sustentación):
+    `alembic revision --autogenerate` NO detecta cambios en restricciones
+    `CHECK` (solo compara tablas, columnas e índices). Agregar un miembro al
+    Enum y correr `--autogenerate` genera una migración VACÍA — sin avisar de
+    que no vio el cambio. El paso manual obligatorio es escribir la migración
+    a mano con:
+
+        op.drop_constraint("ck_solicitudes_tipo", "solicitudes")
+        op.create_check_constraint(
+            "ck_solicitudes_tipo", "solicitudes", _check_en_catalogo("tipo", TipoSolicitud)
+        )
+
+    Como red de seguridad adicional (no como sustituto de lo anterior): si
+    este paso se olvida, `app/core/error_handlers.py::manejar_error_integridad`
+    intercepta el `IntegrityError` resultante y responde `422` en vez de un
+    `500` opaco — pero el arreglo correcto sigue siendo escribir la migración.
     """
     valores = ", ".join(f"'{miembro.value}'" for miembro in enum_cls)
     return f"{columna} IN ({valores})"
@@ -59,7 +76,11 @@ class Solicitud(Base):
     nombre_solicitante: Mapped[str] = mapped_column(String(150), nullable=False)
     # 254 = longitud máxima de una dirección de correo según RFC 5321.
     correo: Mapped[str] = mapped_column(String(254), nullable=False)
-    descripcion: Mapped[str] = mapped_column(Text, nullable=False)
+    # String(4000), no Text: el esquema Pydantic ya limita a 4000 caracteres
+    # (ver schemas/solicitud.py); la columna refleja el mismo límite como red
+    # de seguridad en la base de datos, coherente con el resto de campos de
+    # texto del modelo (todos con longitud acotada, ninguno sin límite).
+    descripcion: Mapped[str] = mapped_column(String(4000), nullable=False)
     prioridad: Mapped[str] = mapped_column(String(10), nullable=False)
     estado: Mapped[str] = mapped_column(
         String(15), nullable=False, server_default=text(f"'{ESTADO_INICIAL.value}'")
