@@ -1,0 +1,9 @@
+# Dependencias adicionales solo para pruebas (ver ADR-0012). Se instalan
+# UNICAMENTE en el stage "test" del Dockerfile; la imagen de produccion
+# (stage "runtime") no las incluye.
+-r requirements.txt
+
+pytest==8.3.4
+pytest-cov==6.0.0
+# TestClient de FastAPI/Starlette usa httpx como transporte de pruebas.
+httpx==0.28.1

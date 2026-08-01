@@ -1,3 +1,7 @@
+# NOTA: tests/ y pytest.ini NO se excluyen aqui a proposito. El stage
+# "runtime" del Dockerfile ya no usa "COPY . ." (copia selectiva, ver
+# ADR-0012), asi que estos archivos nunca llegan a la imagen de produccion
+# aunque esten disponibles en el contexto de build para el stage "test".
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -7,5 +11,4 @@ __pycache__/
 htmlcov/
 .venv/
 venv/
-tests/
 .env

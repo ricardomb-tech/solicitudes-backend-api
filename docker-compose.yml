@@ -55,6 +55,31 @@ services:
     networks:
       - solicitudes-net
 
+  tests:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      # Usa el stage "test" (ver ADR-0012): imagen con pytest/httpx incluidos,
+      # que NUNCA es la que se despliega ni la que arranca con "docker compose
+      # up" a secas.
+      target: test
+    container_name: solicitudes-tests
+    # "profiles: [test]" excluye este servicio de "docker compose up" por
+    # defecto. Solo se ejecuta con:
+    #   docker compose run --rm tests
+    # Así se cumple el requisito de que "docker compose up --build" levante
+    # la solución (backend + BD + consumidor), sin que un contenedor de
+    # pruebas (que termina su ejecución y no es un proceso de larga duración)
+    # aparezca mezclado en "docker compose ps".
+    profiles: ["test"]
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - solicitudes-net
+
 networks:
   solicitudes-net:
     driver: bridge
