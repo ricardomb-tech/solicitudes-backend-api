@@ -37,7 +37,7 @@ flowchart TB
         subgraph net["Red interna: solicitudes-net (bridge)"]
             backend["backend\nFastAPI + Uvicorn\npuerto 8000\n(estado: implementado, Bloque 1)"]
             db[("db\nPostgreSQL 16-alpine\nvolumen: pgdata\n(estado: implementado, Bloque 1)")]
-            consumer["consumer\nservicio simulador\n(estado: planeado, Bloque 5)"]
+            consumer["consumer\nservicio simulador (1 lote, restart: no)\n(estado: implementado, Bloque 5)"]
         end
         logs[("volumen: backend-logs\n(estado: implementado, Bloque 1)")]
     end
@@ -48,9 +48,7 @@ flowchart TB
     backend -- "5432, solo red interna\n(sin ports: expuesto al host)" --> db
     backend -. escribe .-> logs
     consumer -- "http://backend:8000\n(DNS interno de Compose)" --> backend
-    consumer -. "depends_on: backend healthy\n(Bloque 5)" .-> backend
-
-    style consumer stroke-dasharray: 5 5
+    consumer -. "depends_on: backend healthy (via /health/ready)" .-> backend
 ```
 
 **Nota de diseño verificada empíricamente (Bloque 1):** `db` no publica el
@@ -139,7 +137,7 @@ sequenceDiagram
     Note over C1,C2: Exactamente una de las dos recibe 201.<br/>La otra recibe 409, nunca un 500.
 ```
 
-## 5. Diagrama de secuencia — consumidor con reintentos (diseño, Bloque 5)
+## 5. Diagrama de secuencia — consumidor con reintentos (implementado, Bloque 5)
 
 ```mermaid
 sequenceDiagram
@@ -176,7 +174,7 @@ sequenceDiagram
 | Modelo de datos / ER | **Implementado y verificado** contra el esquema real de PostgreSQL (Bloque 2) |
 | Máquina de estados | **Implementada y verificada** (Bloque 3): transición inválida devuelve 409 indicando los estados alcanzables |
 | Secuencia de concurrencia | **Implementada y verificada empíricamente** (Bloque 2): 20 hilos simultáneos → 1 creación, 19 conflictos, 0 excepciones. Se convierte en test automatizado en Bloque 4 |
-| Secuencia del consumidor | Diseño — se marca como implementado al cerrar Bloque 5 |
+| Secuencia del consumidor | **Implementada y verificada**: 16 tests con `httpx.MockTransport` + ejecución real en `docker compose up` (10 éxitos, 1 conflicto 409, 0 fallos transitorios) |
 
 Ver `docs/adr/` para la justificación detallada de cada decisión referenciada
 aquí, y `docs/DECISIONES.md` para la bitácora narrativa del proceso completo.

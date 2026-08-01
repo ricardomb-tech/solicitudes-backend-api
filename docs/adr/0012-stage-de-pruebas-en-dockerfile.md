@@ -31,10 +31,10 @@ explícitamente solo lo que la aplicación necesita en ejecución
 en el stage de pruebas— y en su lugar la exclusión se logra por la copia
 selectiva del stage `runtime`.
 
-En `docker-compose.yml`, el servicio `tests` se declara con
+En `docker-compose.yml`, el servicio `backend-tests` se declara con
 `profiles: ["test"]`, de modo que **no** se levanta con `docker compose up`
 (que debe iniciar únicamente "la solución", tal como exige el enunciado) y solo
-se ejecuta explícitamente con `docker compose run --rm tests`.
+se ejecuta explícitamente con `docker compose run --rm backend-tests`.
 
 ## Alternativas consideradas
 
@@ -42,7 +42,7 @@ se ejecuta explícitamente con `docker compose run --rm tests`.
 |---|---|
 | Instalar `pytest` y compañía en `requirements.txt` (una sola imagen para todo) | Contradice ADR-0006: la imagen que se despliega cargaría herramientas de prueba en producción, aumentando superficie de ataque y tamaño sin ningún beneficio en ese contexto. |
 | Un `Dockerfile.test` completamente separado | Duplicaría las instrucciones de instalación de dependencias base (`builder`) en dos archivos que tendrían que mantenerse sincronizados. Un único Dockerfile con múltiples *stages*, todos derivando del mismo `builder`, evita esa duplicación. |
-| Ejecutar `docker compose up` con el servicio `tests` sin `profiles` | Correría automáticamente al levantar la solución, mostrándose como un contenedor que se detiene inmediatamente después de correr una vez (`pytest` no es un proceso de larga duración), lo cual es confuso frente al requisito de que `docker compose up --build` levante "la solución" (backend + BD + consumidor), no la suite de pruebas. |
+| Ejecutar `docker compose up` con el servicio `backend-tests` sin `profiles` | Correría automáticamente al levantar la solución, mostrándose como un contenedor que se detiene inmediatamente después de correr una vez (`pytest` no es un proceso de larga duración), lo cual es confuso frente al requisito de que `docker compose up --build` levante "la solución" (backend + BD + consumidor), no la suite de pruebas. |
 | Instalar las dependencias de prueba en tiempo de ejecución (`docker compose exec backend pip install pytest && pytest`) | Depende de que el contenedor tenga acceso a Internet en el momento de correr las pruebas y repite la instalación en cada ejecución en lugar de quedar fijada en la imagen; además exigiría permisos de escritura en un directorio que pertenece a `appuser` con `chown` ya aplicado en el build. |
 
 ## Consecuencias
@@ -51,7 +51,7 @@ se ejecuta explícitamente con `docker compose run --rm tests`.
 - La imagen de producción no crece ni un byte por causa de las pruebas: se
   mantiene la garantía de ADR-0006.
 - Un evaluador ejecuta las pruebas con un único comando adicional y explícito
-  (`docker compose run --rm tests`), sin interferir con
+  (`docker compose run --rm backend-tests`), sin interferir con
   `docker compose up --build`.
 - El stage `test` reutiliza exactamente las mismas capas cacheadas del
   `builder` que ya se construyeron para producción — no hay una segunda

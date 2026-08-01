@@ -62,6 +62,8 @@ la honestidad técnica del documento).
 | [0010](0010-liveness-readiness-separados.md) | Endpoints de liveness y readiness separados | Aceptado | 3 |
 | [0011](0011-estrategia-de-pruebas-postgres-real.md) | Pruebas automatizadas contra PostgreSQL real, no SQLite ni mocks | Aceptado | 4 |
 | [0012](0012-stage-de-pruebas-en-dockerfile.md) | Stage `test` independiente en el Dockerfile, excluido de producción | Aceptado | 4 |
+| [0013](0013-politica-de-reintentos-consumidor.md) | Clasificación transitorio/definitivo y backoff exponencial con jitter | Aceptado | 5 |
+| [0014](0014-consumidor-un-solo-lote.md) | El consumidor procesa un solo lote y termina (no es un bucle continuo) | Aceptado | 5 |
 
 > Se agregan nuevos ADR a medida que se toman decisiones equivalentes en los
 > bloques siguientes (formato de errores, máquina de estados, política de
