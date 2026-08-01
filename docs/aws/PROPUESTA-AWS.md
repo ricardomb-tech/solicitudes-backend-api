@@ -1,137 +1,88 @@
 # Propuesta de despliegue e integración en AWS
 
-> No se realiza despliegue real (fuera de alcance según el enunciado). Este
-> documento describe cómo se llevaría este servicio a un ecosistema AWS que ya
-> tiene un frontend y varios servicios backend, con la justificación de cada
-> componente — el enunciado indica explícitamente que "no será suficiente
-> mencionar nombres de servicios de AWS".
+> Sin despliegue real (fuera de alcance). Se describe cómo este servicio se
+> integraría en un ecosistema AWS con un frontend y varios backends ya
+> existentes, justificando función y configuración de cada componente — no
+> solo nombrándolos.
 
-## 1. Arquitectura propuesta (visión general)
+## 1. Arquitectura
 
 ```mermaid
 flowchart TB
-    Usuario["Usuario"]
-    Frontend["Frontend\n(SPA / app existente)"]
-    Usuario --> Frontend
-    Frontend -- "HTTPS + Token (JWT de Cognito)" --> DNSWAF
+    Usuario["Usuario"] --> Frontend["Frontend"]
+    Frontend -- "HTTPS + Token (JWT)" --> R53["Route 53"]
+    R53 --> WAF["AWS WAF\n(reglas gestionadas + rate-based)"]
+    WAF --> ALB["ALB\nlistener 443 (ACM) + redirect 80→443\nrouting por path"]
 
-    subgraph DNSWAF["Borde público"]
-        R53["Route 53\n(DNS)"]
-        WAF["AWS WAF\n(reglas gestionadas + rate-based)"]
-        R53 --> WAF
-    end
-
-    WAF --> ALB
-
-    subgraph Publica["Subred pública (VPC)"]
-        ALB["Application Load Balancer\nListener 443 (ACM) + redirect 80→443\nRouting por path"]
-    end
-
-    ALB -- "/solicitudes/*" --> SvcA
-    ALB -- "/otros-servicios/*" --> SvcB
-    ALB -- "/*" --> SvcC["Otros servicios existentes"]
-
-    subgraph Privada["Subred privada (VPC) — sin ruta a Internet"]
-        SvcA["Servicio de Solicitudes\nECS Fargate (2+ tareas, Multi-AZ)"]
+    subgraph Privada["Subred privada — sin ruta a Internet"]
+        SvcA["Servicio Solicitudes\nECS Fargate, Multi-AZ"]
         SvcB["Otros servicios backend\nECS Fargate"]
-        RDS[("PostgreSQL\nRDS Multi-AZ\nsubred aislada")]
+        RDS[("PostgreSQL\nRDS Multi-AZ, subred aislada")]
         SvcA --> RDS
         SvcB -.-> RDS
     end
 
-    subgraph Transversal["Servicios transversales"]
-        SM["Secrets Manager"]
-        CW["CloudWatch Logs + Metrics + Alarmas"]
-        XR["X-Ray / OpenTelemetry\n(correlation-id propagado)"]
-    end
+    ALB -- "/solicitudes/*" --> SvcA
+    ALB -- "/otros/*" --> SvcB
 
-    SvcA --> SM
-    SvcA --> CW
-    SvcA --> XR
+    SvcA --> SM["Secrets Manager"]
+    SvcA --> CW["CloudWatch\nLogs+Metrics+Alarmas"]
+    SvcA --> XR["X-Ray\n(correlation-id)"]
     SvcB --> SM
     SvcB --> CW
-
-    style Privada fill:#1a1a2e10,stroke:#555
-    style Publica fill:#1a1a2e05,stroke:#555
 ```
 
-## 2. Servicios de AWS seleccionados y función de cada uno
+## 2. Servicios y función de cada uno
 
-| Servicio | Función concreta | Por qué resuelve el problema (no solo "qué es") |
+| Servicio | Función | Cómo resuelve el problema |
 |---|---|---|
-| **Route 53** | DNS del dominio público (`api.empresa.com`) | Permite failover de DNS y health checks activos si se necesitara multi-región a futuro; es el punto donde se ancla el certificado del dominio. |
-| **AWS WAF** (asociado al ALB) | Filtra tráfico malicioso antes del ALB: reglas gestionadas (OWASP Top 10, SQLi, XSS) + regla *rate-based* por IP | Resuelve "protección frente a tráfico malicioso" del enunciado sin escribir lógica de filtrado en cada servicio — el control vive una sola vez, en el borde. |
-| **Application Load Balancer (ALB)** | Único punto de entrada HTTP(S) público; *routing* por path hacia los distintos servicios backend | Se elige **ALB sobre API Gateway** para el tráfico del frontend propio: *path-based routing* (`/solicitudes/*`, `/otros/*`) resuelve el enrutamiento multi-servicio con menor latencia y costo que API Gateway + VPC Link, que añade un salto extra sin aportar valor cuando el único consumidor es el frontend interno. **API Gateway se reserva** para el día en que se necesite exponer la API a terceros con planes de uso, *API keys* o *throttling* por cliente — no se implementa ahora para no añadir un componente sin función. |
-| **ACM (Certificate Manager)** | Emite y renueva automáticamente el certificado TLS del ALB | Cumple "acceso público mediante HTTPS" sin gestión manual de certificados ni rotación manual. |
-| **ECS Fargate** | Ejecuta los contenedores del backend (y del resto de servicios) sin gestionar servidores EC2 | Cada *task* corre en subred **privada**, sin IP pública — cumple la restricción "el backend no podrá exponerse directamente a Internet" por diseño de red, no por configuración de aplicación. |
-| **ECR (Elastic Container Registry)** | Almacena las imágenes Docker del backend y del consumidor, con *scan on push* | El *pipeline* de CI construye y publica la imagen con un tag inmutable (nunca `latest`) por cada commit a `main`; ECS referencia ese tag exacto en su *task definition*. |
-| **RDS PostgreSQL (Multi-AZ)** | Base de datos gestionada, en subred **aislada** sin ruta a Internet (sin *NAT*, sin *Internet Gateway*) | Cumple "PostgreSQL deberá permanecer en una red privada"; Multi-AZ da failover automático de la réplica síncrona sin intervención manual. |
-| **VPC Endpoints** (Interface: ECR, Secrets Manager, CloudWatch Logs; Gateway: S3) | Permiten que las tareas de Fargate en subred privada hablen con esos servicios de AWS sin salir a Internet | Evita depender de un NAT Gateway para tráfico que en realidad es tráfico *dentro* de AWS, reduciendo coste y superficie de exposición. |
-| **Secrets Manager** | Almacena credenciales de RDS y cualquier *secret* de aplicación; rotación automática | Las credenciales se inyectan en la *task definition* como referencia al ARN del secreto — **nunca** como variable de entorno en texto plano ni horneadas en la imagen. Cumple "las credenciales no podrán almacenarse en el código ni en las imágenes Docker". |
-| **IAM (roles por tarea, *task role*)** | Cada servicio tiene su propio rol con permisos mínimos (p. ej. `secretsmanager:GetSecretValue` solo sobre su ARN específico) | Aplica mínimo privilegio real, no un rol compartido con `*`; un servicio comprometido no hereda permisos de otros. |
-| **Cognito** (o el IdP ya existente de la organización) | Emite JWT a los usuarios autenticados desde el frontend | El ALB puede validar el token en el *listener* (*authenticate-oidc*) como primera barrera, pero **cada servicio backend valida el token de nuevo** — la autenticación en el borde no protege el tráfico este-oeste dentro de la VPC si un servicio interno es comprometido. |
-| **CloudWatch Logs + Container Insights** | Recolecta el log JSON estructurado que ya emite la aplicación (mismo formato definido en `docs/ARQUITECTURA.md`) | Centraliza logs de todos los servicios; el `correlation_id` generado por el consumidor y propagado por el backend permite reconstruir el viaje completo de una solicitud a través de `CloudWatch Logs Insights`. |
-| **CloudWatch Alarms + SNS** | Alertas sobre tasa de error 5xx del *target group*, latencia p95, CPU/memoria de las tareas | Detecta degradación antes de que la reporten los usuarios; dispara rollback automático (ver sección 6). |
-| **X-Ray / OpenTelemetry** | Trazabilidad distribuida entre ALB → servicio → RDS | Complementa el `correlation_id` de aplicación con trazas de infraestructura (latencia por segmento de la petición). |
-| **CodePipeline + CodeBuild + CodeDeploy** | CI/CD: build de imagen → push a ECR → despliegue *blue/green* en ECS | Automatiza el ciclo completo con *rollback* automático si una alarma de CloudWatch se dispara durante el despliegue. |
+| Route 53 | DNS del dominio público | Punto de anclaje del certificado y de failover si se escala a multi-región |
+| AWS WAF | Filtra tráfico malicioso antes del ALB | Reglas gestionadas (OWASP) + *rate-based* por IP; el control vive una vez, en el borde |
+| ALB | Único punto de entrada; *routing* por path (`/solicitudes/*`, `/otros/*`) | Se elige sobre API Gateway para tráfico del frontend propio: menor latencia/costo que API GW + VPC Link. API Gateway se reserva para exponer a terceros con *API keys*/*throttling*, no se implementa ahora sin función real |
+| ACM | Certificado TLS del ALB, renovación automática | Cumple HTTPS obligatorio sin gestión manual |
+| ECS Fargate | Ejecuta los contenedores, sin gestionar EC2 | Subred **privada**, sin IP pública: el backend nunca es alcanzable directamente desde Internet |
+| ECR | Almacena las imágenes (backend, consumer), *scan on push* | CI construye y publica con tag inmutable por commit; ECS referencia ese tag exacto |
+| RDS PostgreSQL Multi-AZ | BD gestionada en subred **aislada**, sin NAT/IGW | Cumple "PostgreSQL en red privada"; failover automático sin intervención |
+| VPC Endpoints (ECR, Secrets Manager, CloudWatch Logs) | Acceso a servicios AWS sin salir a Internet | Evita NAT Gateway para tráfico que es interno a AWS |
+| Secrets Manager | Credenciales de RDS y secretos de app, con rotación | Se referencia por ARN en la *task definition*; nunca texto plano ni horneado en la imagen |
+| IAM (rol por tarea) | Permisos mínimos por servicio | P. ej. `secretsmanager:GetSecretValue` solo sobre su ARN — mínimo privilegio real |
+| Cognito / IdP existente | Emite JWT al frontend | El ALB puede validar en el *listener*, pero **cada servicio valida de nuevo** — el borde no protege el tráfico interno |
+| CloudWatch (+Container Insights) | Centraliza el log JSON ya emitido por la app | El `correlation_id` (nace en el consumidor, ver Bloque 5) permite reconstruir una petición completa en Logs Insights |
+| CloudWatch Alarms + SNS | Alerta sobre tasa de 5xx, latencia, CPU/memoria | Dispara rollback automático (§5) |
+| X-Ray / OpenTelemetry | Traza distribuida ALB→servicio→RDS | Complementa el `correlation_id` con latencia por segmento |
+| CodePipeline/Build/Deploy | CI/CD build→ECR→despliegue *blue/green* | Rollback automático si una alarma se dispara durante el despliegue |
 
-## 3. Configuración del punto de entrada
+## 3. Punto de entrada y enrutamiento
 
-- **Listener 443** en el ALB con certificado ACM; **listener 80** solo redirige (301) a 443 — nunca se sirve tráfico HTTP plano.
-- **Target group** por servicio, con *health check* apuntando a `GET /health/ready` de cada uno (no `/health`): así el ALB saca de rotación una tarea que perdió la conexión a RDS sin matarla — se le da la oportunidad de recuperarse sin interrumpir el ciclo de vida del contenedor.
-- **Reglas de enrutamiento** basadas en *path pattern*: `/solicitudes/*` → target group del servicio de solicitudes; el resto de patrones apunta a los servicios backend ya existentes en el ecosistema, permitiendo que este servicio se integre sin reconfigurar los demás.
+- Listener **443** con certificado ACM; **80** solo redirige (301) a 443.
+- *Target group* por servicio con health check en **`/health/ready`** (no `/health`): el ALB saca de rotación una tarea que perdió la BD sin matarla — misma distinción liveness/readiness del backend (ver `docs/adr/0010`).
+- Reglas por *path pattern*: `/solicitudes/*` → este servicio; el resto apunta a los servicios ya existentes, sin reconfigurarlos.
 
-## 4. Segmentación de red y reglas de acceso (mínimo privilegio por capas)
+## 4. Segmentación y acceso (mínimo privilegio en cadena)
 
-Los *security groups* se encadenan **por referencia**, nunca por rango de IP (CIDR) abierto internamente:
+Security groups referenciados entre sí, nunca por CIDR abierto internamente:
 
 ```
-SG-ALB   : permite 443/80 desde 0.0.0.0/0 (único punto abierto a Internet)
-SG-ECS   : permite 8000 (o el puerto interno) SOLO desde SG-ALB
-SG-RDS   : permite 5432 SOLO desde SG-ECS
+SG-ALB : 443/80 desde 0.0.0.0/0 (único punto abierto)
+SG-ECS : puerto app SOLO desde SG-ALB
+SG-RDS : 5432 SOLO desde SG-ECS
 ```
 
-Esto hace que, aunque alguien obtuviera una IP dentro de la VPC, no pueda
-alcanzar RDS directamente sin pasar por un servicio que ya tiene el SG
-correcto — la segmentación es estructural, no una regla que dependa de
-recordarla.
+Aunque algo obtuviera una IP dentro de la VPC, no alcanza RDS sin pasar por un servicio con el SG correcto: la segmentación es estructural. Subredes: **pública** (solo ALB), **privada** (ECS, sin IP pública), **aislada** (RDS, sin ruta a Internet).
 
-- **Subred pública:** solo el ALB (y NAT Gateway, si se decide usar en vez de VPC Endpoints para tráfico saliente ocasional).
-- **Subred privada:** ECS Fargate (servicios backend), sin IP pública asignada.
-- **Subred aislada:** RDS, sin ruta a Internet Gateway ni NAT.
+## 5. Autenticación, CORS/rate-limit, y despliegue
 
-## 5. Autenticación y autorización
+- **Usuario→Backend:** JWT de Cognito/IdP; el frontend lo adjunta en `Authorization`. Cada servicio valida firma/expiración/claims — no delega solo al ALB.
+- **Servicio→Servicio:** IAM SigV4 o *client_credentials* con audiencia por servicio; nunca un token compartido.
+- **CORS:** orígenes explícitos del frontend, nunca `*`. **Rate limiting:** regla *rate-based* en WAF; *API keys* si se habilita API Gateway a terceros.
+- **Escalado:** *target tracking* sobre CPU y `RequestCountPerTarget`.
+- **Despliegue:** CodeDeploy *blue/green* sobre ECS — tráfico se desvía tras validar health checks del nuevo conjunto.
+- **Reversión:** una alarma de CloudWatch (5xx, latencia) durante el despliegue dispara rollback automático al conjunto anterior, sin intervención manual ni downtime perceptible.
 
-- **Usuario → Frontend → Backend:** JWT emitido por Cognito (o el IdP corporativo existente); el frontend lo adjunta en `Authorization: Bearer`. Cada servicio backend valida firma, expiración y *claims* (rol/alcance) — no delega esa responsabilidad únicamente al ALB.
-- **Servicio → Servicio:** para llamadas internas (p. ej. si el servicio de solicitudes necesitara consultar a otro backend del ecosistema), se usa IAM SigV4 (si ambos están en AWS y pueden asumir roles) o credenciales de cliente OAuth2 (*client_credentials*) con audiencia específica por servicio — nunca un token compartido entre servicios.
-- **CORS:** configurado en el propio servicio (lista explícita de orígenes permitidos del frontend, no `*`), coherente con exponer la API solo detrás de HTTPS.
-- **Rate limiting:** regla *rate-based* en WAF (por IP/ventana de tiempo) como primera línea; límites adicionales por *API key* si en el futuro se habilita API Gateway para terceros.
+## 6. Extensibilidad
 
-## 6. Escalabilidad, despliegue y reversión
-
-- **Escalado:** *target tracking* de Application Auto Scaling sobre CPU (~60-70%) y `RequestCountPerTarget` del ALB — agrega/quita tareas de Fargate automáticamente.
-- **Despliegue:** CodeDeploy en modo *blue/green* sobre ECS: se levanta el conjunto de tareas nuevo, el ALB desvía tráfico gradualmente (o de forma completa tras validar *health checks*), y el conjunto anterior se mantiene activo un período de gracia.
-- **Reversión:** si una alarma de CloudWatch (tasa de 5xx, latencia) se dispara durante o después del despliegue, CodeDeploy revierte automáticamente el *target group* al conjunto de tareas anterior — sin intervención manual y sin tiempo de inactividad perceptible.
-
-## 7. Extensibilidad (nuevos servicios)
-
-Añadir un nuevo servicio backend al ecosistema implica: una nueva *task
-definition* + *service* en ECS (en la misma subred privada), un nuevo *target
-group*, y una nueva regla de *path pattern* en el ALB existente — no requiere
-tocar el punto de entrada público, el WAF, ni los servicios ya desplegados.
-Esa es precisamente la propiedad que exige el enunciado ("la arquitectura
-deberá permitir incorporar nuevos servicios").
+Agregar un servicio nuevo = una *task definition* + *target group* + una regla de *path pattern* en el ALB ya existente. No toca el punto de entrada público, el WAF ni los servicios ya desplegados — la propiedad que exige el enunciado.
 
 ---
 
-*Diagrama de flujo mínimo exigido por el enunciado — ver equivalente Mermaid
-en la sección 1; forma textual de referencia:*
-
-```
-Usuario → Frontend → HTTPS+Token → DNS/WAF → ALB
-    → { Servicio de Solicitudes | Otros servicios backend }
-        → PostgreSQL privado (RDS Multi-AZ)
-    Servicios backend → Gestión de secretos (Secrets Manager)
-    Servicios backend → Logs, métricas y alertas (CloudWatch)
-    Servicios backend → Trazabilidad (X-Ray / correlation-id)
-```
+*Flujograma mínimo exigido, forma textual:* Usuario → Frontend → HTTPS+Token → DNS/WAF → ALB → {Servicio de Solicitudes | Otros backends} → PostgreSQL privado (RDS Multi-AZ); Servicios backend → Secrets Manager / CloudWatch / X-Ray.
