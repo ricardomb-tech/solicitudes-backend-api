@@ -1,0 +1,10 @@
+# tests/ NO se excluye a propósito: el stage "runtime" copia selectivamente
+# solo app/, así que tests/ nunca llega a la imagen que se ejecuta, pero sí
+# está disponible para el stage "test" (ver consumer/Dockerfile).
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+.venv/
+venv/
+.env
