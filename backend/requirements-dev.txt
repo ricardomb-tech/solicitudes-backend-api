@@ -3,7 +3,7 @@
 # (stage "runtime") no las incluye.
 -r requirements.txt
 
-pytest==8.3.4
+pytest==9.0.3
 pytest-cov==6.0.0
 # TestClient de FastAPI/Starlette usa httpx como transporte de pruebas.
 httpx==0.28.1
