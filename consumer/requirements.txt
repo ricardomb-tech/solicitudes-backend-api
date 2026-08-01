@@ -1,0 +1,4 @@
+# Versiones fijadas (ver mismo criterio que backend/requirements.txt).
+httpx==0.28.1
+pydantic-settings==2.6.1
+structlog==24.4.0
