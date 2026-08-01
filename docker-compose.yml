@@ -33,6 +33,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # IMPORTANTE: explícito a propósito. Docker construye por defecto el
+      # ÚLTIMO stage del Dockerfile cuando no se indica "target" — y desde que
+      # se agregaron los stages "test-deps"/"test" (ADR-0012), el último stage
+      # dejó de ser "runtime". Sin esta línea, "docker compose up" construiría
+      # y arrancaría la imagen de PRUEBAS en el servicio de producción.
+      target: runtime
     container_name: solicitudes-backend
     restart: unless-stopped
     env_file:
@@ -52,10 +58,57 @@ services:
       # (REQ-D-05), en paralelo a la salida por stdout que consume
       # `docker compose logs -f`.
       - backend-logs:/app/logs
+    healthcheck:
+      # Verifica /health/ready (no /health): el consumidor debe esperar a que
+      # el backend pueda REALMENTE atender peticiones (BD incluida), no solo a
+      # que el proceso de Uvicorn haya arrancado (ver ADR-0010 y ADR-0014).
+      #
+      # Se usa el módulo estándar de Python (urllib) en vez de instalar curl:
+      # la imagen runtime no trae curl (ver ADR-0006, imagen mínima), y añadir
+      # un paquete de sistema solo para el healthcheck sería exactamente el
+      # tipo de dependencia innecesaria que ese ADR busca evitar. Python ya
+      # está garantizado en la imagen porque es el runtime de la aplicación.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - solicitudes-net
 
-  tests:
+  consumer:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+      # Mismo motivo que en "backend": sin esto se construiría el último
+      # stage del Dockerfile ("test"), no "runtime".
+      target: runtime
+    container_name: solicitudes-consumer
+    # Proceso de UN SOLO LOTE, no un servicio de larga duración (ver
+    # ADR-0014): se ejecuta, procesa su lote y termina. "no" evita que Compose
+    # lo reinicie en bucle al terminar con código 0 (un reinicio automático
+    # aquí simularía tráfico externo periódico, que está fuera del alcance de
+    # esta prueba; para ejecutar otro lote basta con
+    # `docker compose run --rm consumer`).
+    restart: "no"
+    env_file:
+      - .env
+    depends_on:
+      backend:
+        # Espera a que el backend esté "ready" (BD incluida), no solo iniciado.
+        condition: service_healthy
+    volumes:
+      - consumer-logs:/app/logs
+    networks:
+      - solicitudes-net
+
+  backend-tests:
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -63,10 +116,10 @@ services:
       # que NUNCA es la que se despliega ni la que arranca con "docker compose
       # up" a secas.
       target: test
-    container_name: solicitudes-tests
+    container_name: solicitudes-backend-tests
     # "profiles: [test]" excluye este servicio de "docker compose up" por
     # defecto. Solo se ejecuta con:
-    #   docker compose run --rm tests
+    #   docker compose run --rm backend-tests
     # Así se cumple el requisito de que "docker compose up --build" levante
     # la solución (backend + BD + consumidor), sin que un contenedor de
     # pruebas (que termina su ejecución y no es un proceso de larga duración)
@@ -80,6 +133,20 @@ services:
     networks:
       - solicitudes-net
 
+  consumer-tests:
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile
+      target: test
+    container_name: solicitudes-consumer-tests
+    profiles: ["test"]
+    # Sin depends_on ni env_file de conexión a servicios reales: las pruebas
+    # del consumidor verifican la política de reintentos con un transporte
+    # HTTP simulado (ver consumer/tests/conftest.py) y no requieren que el
+    # backend ni la base de datos estén corriendo.
+    networks:
+      - solicitudes-net
+
 networks:
   solicitudes-net:
     driver: bridge
@@ -87,3 +154,4 @@ networks:
 volumes:
   pgdata:
   backend-logs:
+  consumer-logs:
