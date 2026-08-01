@@ -89,7 +89,13 @@ def listar_solicitudes(
         le=settings.max_page_size,
         description="Cantidad máxima de resultados por página.",
     ),
-    offset: int = Query(default=0, ge=0, description="Registros a omitir."),
+    # le=100_000: sin cota superior (encontrado en auditoría), un
+    # "?offset=999999999" obliga a PostgreSQL a recorrer y descartar esa
+    # cantidad de filas antes de responder — barato de pedir, caro de
+    # ejecutar. El mismo criterio que ya se aplicaba a "limit".
+    offset: int = Query(
+        default=0, ge=0, le=100_000, description="Registros a omitir."
+    ),
 ) -> SolicitudPagina:
     """
     Devuelve las solicitudes que cumplen los filtros, ordenadas de más reciente
