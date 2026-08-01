@@ -83,7 +83,7 @@ erDiagram
 compuesto `(estado, tipo, prioridad)` (filtro combinado del listado);
 `(fecha_creacion DESC)` (orden por defecto).
 
-### Máquina de estados de `estado` (definida en Bloque 2, aplicada en Bloque 3)
+### Máquina de estados de `estado` (implementada y aplicada — Bloque 3)
 
 ```mermaid
 stateDiagram-v2
@@ -174,7 +174,7 @@ sequenceDiagram
 | Contexto | Vigente desde Bloque 0 |
 | Contenedores | Refleja el estado real verificado en Bloque 1 |
 | Modelo de datos / ER | **Implementado y verificado** contra el esquema real de PostgreSQL (Bloque 2) |
-| Máquina de estados | Definida en `app/domain/enums.py` (Bloque 2); se aplica en la capa de servicios en Bloque 3 |
+| Máquina de estados | **Implementada y verificada** (Bloque 3): transición inválida devuelve 409 indicando los estados alcanzables |
 | Secuencia de concurrencia | **Implementada y verificada empíricamente** (Bloque 2): 20 hilos simultáneos → 1 creación, 19 conflictos, 0 excepciones. Se convierte en test automatizado en Bloque 4 |
 | Secuencia del consumidor | Diseño — se marca como implementado al cerrar Bloque 5 |
 

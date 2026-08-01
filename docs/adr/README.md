@@ -57,6 +57,9 @@ la honestidad técnica del documento).
 | [0005](0005-healthcheck-y-orden-inicializacion.md) | Healthcheck de Postgres + `depends_on: condition: service_healthy` | Aceptado | 1 |
 | [0006](0006-docker-multistage-no-root.md) | Imagen Docker multi-stage con usuario no-root | Aceptado | 1 |
 | [0007](0007-sqlalchemy-sincrono-sobre-asincrono.md) | SQLAlchemy síncrono (no asíncrono) con endpoints `def` | Aceptado | 2 |
+| [0008](0008-contrato-uniforme-de-errores.md) | Contrato uniforme de errores y no exposición de detalles técnicos | Aceptado | 3 |
+| [0009](0009-observabilidad-logs-json-correlacion.md) | Logs estructurados JSON con identificador de correlación propagado | Aceptado | 3 |
+| [0010](0010-liveness-readiness-separados.md) | Endpoints de liveness y readiness separados | Aceptado | 3 |
 
 > Se agregan nuevos ADR a medida que se toman decisiones equivalentes en los
 > bloques siguientes (formato de errores, máquina de estados, política de
