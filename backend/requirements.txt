@@ -1,0 +1,18 @@
+# Versiones fijadas explícitamente (no ">=","*" ni sin versión) para builds
+# reproducibles: el mismo requirements.txt debe producir el mismo entorno hoy
+# y dentro de varios meses, sin sorpresas por un release nuevo de una librería.
+#
+# Se pinnea aquí el stack completo del backend (aunque en el Bloque 1 solo se
+# usan fastapi/uvicorn/pydantic-settings) porque la elección de versiones es
+# una decisión de arquitectura tomada de una sola vez, evitando conflictos de
+# resolución de dependencias más adelante.
+
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
+email-validator==2.2.0
+sqlalchemy==2.0.36
+psycopg[binary]==3.2.3
+alembic==1.14.0
+structlog==24.4.0
