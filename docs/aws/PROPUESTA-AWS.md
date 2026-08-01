@@ -36,21 +36,14 @@ flowchart TB
 
 | Servicio | Función | Cómo resuelve el problema |
 |---|---|---|
-| Route 53 | DNS del dominio público | Punto de anclaje del certificado y de failover si se escala a multi-región |
-| AWS WAF | Filtra tráfico malicioso antes del ALB | Reglas gestionadas (OWASP) + *rate-based* por IP; el control vive una vez, en el borde |
-| ALB | Único punto de entrada; *routing* por path (`/solicitudes/*`, `/otros/*`) | Se elige sobre API Gateway para tráfico del frontend propio: menor latencia/costo que API GW + VPC Link. API Gateway se reserva para exponer a terceros con *API keys*/*throttling*, no se implementa ahora sin función real |
-| ACM | Certificado TLS del ALB, renovación automática | Cumple HTTPS obligatorio sin gestión manual |
-| ECS Fargate | Ejecuta los contenedores, sin gestionar EC2 | Subred **privada**, sin IP pública: el backend nunca es alcanzable directamente desde Internet |
-| ECR | Almacena las imágenes (backend, consumer), *scan on push* | CI construye y publica con tag inmutable por commit; ECS referencia ese tag exacto |
-| RDS PostgreSQL Multi-AZ | BD gestionada en subred **aislada**, sin NAT/IGW | Cumple "PostgreSQL en red privada"; failover automático sin intervención |
-| VPC Endpoints (ECR, Secrets Manager, CloudWatch Logs) | Acceso a servicios AWS sin salir a Internet | Evita NAT Gateway para tráfico que es interno a AWS |
-| Secrets Manager | Credenciales de RDS y secretos de app, con rotación | Se referencia por ARN en la *task definition*; nunca texto plano ni horneado en la imagen |
-| IAM (rol por tarea) | Permisos mínimos por servicio | P. ej. `secretsmanager:GetSecretValue` solo sobre su ARN — mínimo privilegio real |
+| Route 53 + WAF + ACM | DNS público, filtrado de tráfico malicioso, certificado TLS | WAF con reglas gestionadas (OWASP) + *rate-based* por IP antes del ALB; ACM renueva el certificado sin gestión manual. El control vive una sola vez, en el borde |
+| ALB | Único punto de entrada; *routing* por path (`/solicitudes/*`, `/otros/*`) | Se elige sobre API Gateway para el tráfico del frontend propio: menor latencia/costo que API GW + VPC Link. API Gateway se reserva para exponer a terceros con *API keys*/*throttling* — no se añade ahora sin función real |
+| ECS Fargate + ECR | Ejecuta los contenedores en subred **privada**; ECR almacena las imágenes con *scan on push* | Sin IP pública: el backend nunca es alcanzable directamente desde Internet. CI publica con tag inmutable por commit; ECS referencia ese tag exacto |
+| RDS PostgreSQL Multi-AZ + VPC Endpoints | BD en subred **aislada** (sin NAT/IGW); endpoints privados hacia ECR/Secrets Manager/CloudWatch | Cumple "PostgreSQL en red privada"; failover automático sin intervención; el tráfico hacia otros servicios de AWS no sale a Internet |
+| Secrets Manager + IAM (rol por tarea) | Credenciales de RDS y secretos de app, con rotación; permisos mínimos por servicio | Se referencian por ARN en la *task definition* (nunca texto plano ni horneado en la imagen); p. ej. `secretsmanager:GetSecretValue` solo sobre su ARN — mínimo privilegio real |
 | Cognito / IdP existente | Emite JWT al frontend | El ALB puede validar en el *listener*, pero **cada servicio valida de nuevo** — el borde no protege el tráfico interno |
-| CloudWatch (+Container Insights) | Centraliza el log JSON ya emitido por la app | El `correlation_id` (nace en el consumidor, ver Bloque 5) permite reconstruir una petición completa en Logs Insights |
-| CloudWatch Alarms + SNS | Alerta sobre tasa de 5xx, latencia, CPU/memoria | Dispara rollback automático (§5) |
-| X-Ray / OpenTelemetry | Traza distribuida ALB→servicio→RDS | Complementa el `correlation_id` con latencia por segmento |
-| CodePipeline/Build/Deploy | CI/CD build→ECR→despliegue *blue/green* | Rollback automático si una alarma se dispara durante el despliegue |
+| CloudWatch + X-Ray | Centraliza el log JSON ya emitido por la app; traza distribuida ALB→servicio→RDS; alarmas sobre 5xx/latencia/CPU | El `correlation_id` (nace en el consumidor, se propaga al backend) permite reconstruir una petición completa en Logs Insights; las alarmas disparan el rollback de §5 |
+| CodePipeline/Build/Deploy | CI/CD: build → ECR → despliegue *blue/green* | Rollback automático si una alarma se dispara durante el despliegue |
 
 ## 3. Punto de entrada y enrutamiento
 
@@ -75,7 +68,7 @@ Aunque algo obtuviera una IP dentro de la VPC, no alcanza RDS sin pasar por un s
 
 - **Usuario→Backend:** JWT de Cognito/IdP; el frontend lo adjunta en `Authorization`. Cada servicio valida firma/expiración/claims — no delega solo al ALB.
 - **Servicio→Servicio:** IAM SigV4 o *client_credentials* con audiencia por servicio; nunca un token compartido.
-- **CORS:** orígenes explícitos del frontend, nunca `*`. **Rate limiting:** regla *rate-based* en WAF; *API keys* si se habilita API Gateway a terceros.
+- **CORS:** se configura en **cada servicio backend** (`CORSMiddleware` de FastAPI ya expuesto por el framework), no en el ALB —que no interpreta CORS, solo enruta TCP/HTTP— ni en el WAF. `allow_origins` lista los dominios exactos del frontend (nunca `*`), tomados de una variable de entorno inyectada por servicio para poder diferir entre `staging`/`prod` sin rebuild. **Rate limiting:** regla *rate-based* en WAF (límite por IP/ventana, antes de llegar al ALB); *API keys* con *usage plans* si se habilita API Gateway para terceros.
 - **Escalado:** *target tracking* sobre CPU y `RequestCountPerTarget`.
 - **Despliegue:** CodeDeploy *blue/green* sobre ECS — tráfico se desvía tras validar health checks del nuevo conjunto.
 - **Reversión:** una alarma de CloudWatch (5xx, latencia) durante el despliegue dispara rollback automático al conjunto anterior, sin intervención manual ni downtime perceptible.
