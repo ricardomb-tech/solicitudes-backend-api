@@ -60,6 +60,8 @@ la honestidad técnica del documento).
 | [0008](0008-contrato-uniforme-de-errores.md) | Contrato uniforme de errores y no exposición de detalles técnicos | Aceptado | 3 |
 | [0009](0009-observabilidad-logs-json-correlacion.md) | Logs estructurados JSON con identificador de correlación propagado | Aceptado | 3 |
 | [0010](0010-liveness-readiness-separados.md) | Endpoints de liveness y readiness separados | Aceptado | 3 |
+| [0011](0011-estrategia-de-pruebas-postgres-real.md) | Pruebas automatizadas contra PostgreSQL real, no SQLite ni mocks | Aceptado | 4 |
+| [0012](0012-stage-de-pruebas-en-dockerfile.md) | Stage `test` independiente en el Dockerfile, excluido de producción | Aceptado | 4 |
 
 > Se agregan nuevos ADR a medida que se toman decisiones equivalentes en los
 > bloques siguientes (formato de errores, máquina de estados, política de
