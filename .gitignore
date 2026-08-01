@@ -64,10 +64,11 @@ docker-compose.override.yml
 /Prueba Tecnica Backend.pdf
 
 # ---------------------------------------------------------------------------
-# Editores / SO
+# Editores / SO / herramientas de asistencia
 # ---------------------------------------------------------------------------
 .vscode/
 .idea/
+.claude/
 *.swp
 .DS_Store
 Thumbs.db
