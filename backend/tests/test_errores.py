@@ -1,7 +1,7 @@
 """
 Pruebas del manejo centralizado de errores (REQ-V-06: no exponer información
-técnica sensible en los errores). Formaliza la verificación manual del
-Bloque 3 (detener PostgreSQL y observar la respuesta).
+técnica sensible en los errores). Formaliza la verificación manual descrita en
+ADR-0008 (detener PostgreSQL y observar la respuesta).
 """
 from collections.abc import Iterator
 

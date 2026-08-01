@@ -20,8 +20,8 @@ servicios, con hilos de Python reales y una sesión de SQLAlchemy por hilo, es
 la forma correcta y determinista de probar una garantía que pertenece a la
 base de datos, no a HTTP.
 
-Esta prueba formaliza como test automatizado la verificación manual ya
-realizada en el Bloque 2 (20 hilos, 1 creación, 19 conflictos, 0 excepciones).
+Esta prueba formaliza como test automatizado la verificación manual descrita
+en ADR-0003 (20 hilos, 1 creación, 19 conflictos, 0 excepciones).
 """
 import threading
 import uuid

@@ -52,12 +52,13 @@ ESTADO_INICIAL = EstadoSolicitud.RECIBIDA
 #: Máquina de estados: por cada estado, el conjunto de estados a los que se
 #: permite transicionar. Los estados terminales mapean a un conjunto vacío.
 #:
-#: Justificación (ver también docs/ARQUITECTURA.md): el enunciado pide
-#: "actualizar el estado" sin especificar restricciones, pero permitir
-#: transiciones arbitrarias haría válido pasar de "completada" de vuelta a
-#: "recibida", una inconsistencia de negocio evidente. Modelar la máquina de
-#: estados explícitamente convierte esa regla en algo verificable por un test,
-#: en vez de una convención implícita que nadie garantiza.
+#: Justificación completa, con alternativas descartadas, en ADR-0017. En
+#: resumen: el enunciado pide "actualizar el estado" sin especificar
+#: restricciones, pero permitir transiciones arbitrarias haría válido pasar
+#: de "completada" de vuelta a "recibida", una inconsistencia de negocio
+#: evidente. Modelar la máquina de estados explícitamente convierte esa regla
+#: en algo verificable por un test, en vez de una convención implícita que
+#: nadie garantiza.
 TRANSICIONES_PERMITIDAS: dict[EstadoSolicitud, frozenset[EstadoSolicitud]] = {
     EstadoSolicitud.RECIBIDA: frozenset(
         {EstadoSolicitud.EN_PROCESO, EstadoSolicitud.RECHAZADA}

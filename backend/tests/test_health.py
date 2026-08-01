@@ -38,7 +38,7 @@ class _SesionQueFalla:
     """
     Doble de prueba que simula una sesión de base de datos incapaz de
     responder — reproduce, sin necesidad de detener el contenedor real de
-    PostgreSQL, el mismo escenario que se verificó manualmente en el Bloque 3.
+    PostgreSQL, el mismo escenario descrito en ADR-0010.
     """
 
     def execute(self, *_args: object, **_kwargs: object) -> None:
@@ -51,11 +51,11 @@ def test_readiness_responde_503_cuando_la_base_de_datos_no_responde(
     app_instance: FastAPI, client: TestClient
 ) -> None:
     """
-    Formaliza como test automatizado la verificación manual del Bloque 3:
-    deteniendo PostgreSQL, `/health/ready` respondía 503 mientras `/health`
-    seguía en 200. Aquí se simula el fallo sustituyendo la dependencia en vez
-    de detener el contenedor real, para que la prueba sea determinista y no
-    afecte a las demás pruebas de la sesión.
+    Formaliza como test automatizado la verificación manual descrita en
+    ADR-0010: deteniendo PostgreSQL, `/health/ready` respondía 503 mientras
+    `/health` seguía en 200. Aquí se simula el fallo sustituyendo la
+    dependencia en vez de detener el contenedor real, para que la prueba sea
+    determinista y no afecte a las demás pruebas de la sesión.
     """
 
     def _override_fallido() -> Iterator[_SesionQueFalla]:

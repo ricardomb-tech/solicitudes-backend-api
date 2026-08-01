@@ -2,10 +2,11 @@
 # reproducibles: el mismo requirements.txt debe producir el mismo entorno hoy
 # y dentro de varios meses, sin sorpresas por un release nuevo de una librería.
 #
-# Se pinnea aquí el stack completo del backend (aunque en el Bloque 1 solo se
-# usan fastapi/uvicorn/pydantic-settings) porque la elección de versiones es
-# una decisión de arquitectura tomada de una sola vez, evitando conflictos de
-# resolución de dependencias más adelante.
+# Se pinnea aquí el stack completo del backend de una sola vez (incluidas
+# dependencias que se incorporan progresivamente: SQLAlchemy/Alembic/psycopg
+# para persistencia, structlog para logging) porque la elección de versiones
+# es una decisión de arquitectura tomada al inicio del proyecto, evitando
+# conflictos de resolución de dependencias más adelante.
 
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
