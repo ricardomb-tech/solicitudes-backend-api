@@ -23,16 +23,13 @@ target group del ALB apunta a `/health/ready` precisamente por este motivo.
 """
 from typing import Any
 
-import structlog
 from fastapi import APIRouter, Response, status
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.deps import SesionBD
 from app.core.config import get_settings
+from app.db.session import verificar_conexion
 
 router = APIRouter(tags=["salud"])
-logger = structlog.get_logger(__name__)
 
 
 @router.get(
@@ -60,19 +57,15 @@ def health_ready(session: SesionBD, response: Response) -> dict[str, Any]:
     """
     Chequeo de disponibilidad: comprueba que la base de datos responde.
 
-    Se ejecuta `SELECT 1`, la consulta más barata posible que aun así recorre
-    el camino completo (pool de conexiones → red → servidor → respuesta). No se
-    consulta ninguna tabla del negocio a propósito: el chequeo debe verificar
-    conectividad, no depender de que exista determinado dato.
+    La verificación real (`SELECT 1`, manejo de `SQLAlchemyError`) vive en
+    `app/db/session.py::verificar_conexion` — este router solo interpreta un
+    booleano, sin importar `sqlalchemy` (ver ADR-0001).
 
     Ante un fallo se devuelve `503 Service Unavailable` (el servicio existe
     pero no puede atender ahora), no `500`. El detalle técnico del fallo va al
-    log, nunca al cuerpo de la respuesta.
+    log (dentro de `verificar_conexion`), nunca al cuerpo de la respuesta.
     """
-    try:
-        session.execute(text("SELECT 1"))
-    except SQLAlchemyError:
-        logger.error("readiness_fallido", dependencia="postgresql", exc_info=True)
+    if not verificar_conexion(session):
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {
             "status": "degraded",
