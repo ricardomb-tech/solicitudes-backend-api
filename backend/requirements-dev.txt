@@ -3,7 +3,12 @@
 # (stage "runtime") no las incluye.
 -r requirements.txt
 
-pytest==8.3.4
+# pytest>=9.0.3 corrige CVE-2025-71176 (manejo inseguro de directorios
+# temporales en UNIX, GHSA-6w46-j5rx-g56g). Solo afecta a esta dependencia de
+# desarrollo, que nunca llega a la imagen de producción (ver ADR-0012), pero
+# se actualiza de todas formas: un CVE con parche disponible no se deja sin
+# corregir solo porque su superficie de exposición ya sea baja.
+pytest==9.0.3
 pytest-cov==6.0.0
 # TestClient de FastAPI/Starlette usa httpx como transporte de pruebas.
 httpx==0.28.1
