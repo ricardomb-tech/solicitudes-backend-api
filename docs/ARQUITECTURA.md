@@ -60,7 +60,7 @@ puerto 5432 al host — solo es alcanzable desde `backend` dentro de la red
 entorno local para que el hábito y el diseño sean uno solo, no dos mundos
 distintos.
 
-## 3. Modelo de datos (diagrama entidad-relación) — diseño, Bloque 2
+## 3. Modelo de datos (diagrama entidad-relación) — implementado (Bloque 2)
 
 ```mermaid
 erDiagram
@@ -78,11 +78,12 @@ erDiagram
     }
 ```
 
-Índices planeados: `UNIQUE(identificador_externo)` (integridad + acceso O(log n));
+Índices implementados (verificados con `\d solicitudes` en PostgreSQL):
+`UNIQUE(identificador_externo)` (integridad + soporte de `ON CONFLICT`);
 compuesto `(estado, tipo, prioridad)` (filtro combinado del listado);
 `(fecha_creacion DESC)` (orden por defecto).
 
-### Máquina de estados de `estado` (diseño, Bloque 3)
+### Máquina de estados de `estado` (definida en Bloque 2, aplicada en Bloque 3)
 
 ```mermaid
 stateDiagram-v2
@@ -172,9 +173,9 @@ sequenceDiagram
 |---|---|
 | Contexto | Vigente desde Bloque 0 |
 | Contenedores | Refleja el estado real verificado en Bloque 1 |
-| Modelo de datos / ER | Diseño — se marca como implementado al cerrar Bloque 2 |
-| Máquina de estados | Diseño — se marca como implementado al cerrar Bloque 3 |
-| Secuencia de concurrencia | Diseño — se marca como implementado y se enlaza al test correspondiente al cerrar Bloque 2/4 |
+| Modelo de datos / ER | **Implementado y verificado** contra el esquema real de PostgreSQL (Bloque 2) |
+| Máquina de estados | Definida en `app/domain/enums.py` (Bloque 2); se aplica en la capa de servicios en Bloque 3 |
+| Secuencia de concurrencia | **Implementada y verificada empíricamente** (Bloque 2): 20 hilos simultáneos → 1 creación, 19 conflictos, 0 excepciones. Se convierte en test automatizado en Bloque 4 |
 | Secuencia del consumidor | Diseño — se marca como implementado al cerrar Bloque 5 |
 
 Ver `docs/adr/` para la justificación detallada de cada decisión referenciada
