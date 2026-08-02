@@ -5,14 +5,15 @@ meta {
 }
 
 get {
-  url: {{base_url}}/solicitudes?estado=recibida&limit=10&offset=0
+  url: {{base_url}}/solicitudes
   body: none
   auth: none
-  params: {
-    estado: recibida,
-    limit: 10,
-    offset: 0
-  }
+}
+
+params:query {
+  estado: recibida
+  limit: 10
+  offset: 0
 }
 
 assert {

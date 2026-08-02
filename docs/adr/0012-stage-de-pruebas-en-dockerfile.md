@@ -4,60 +4,38 @@
 - **Fecha:** 2026-08-01
 - **Bloque:** 4
 
+> **En pocas palabras:** `pytest` y sus dependencias viven en un stage separado del Dockerfile y nunca llegan a la imagen de producción. El evaluador ejecuta las pruebas con un único comando adicional (`docker compose run --rm backend-tests`) sin interferir con `docker compose up`.
+
 ## Contexto
 
-Ejecutar las pruebas dentro de un contenedor (ADR-0011) requiere que `pytest`,
-`pytest-cov` y `httpx` estén instalados, y que el directorio `tests/` esté
-presente en la imagen. El Dockerfile de producción (ADR-0006) fue diseñado
-deliberadamente para **no** cargar herramientas innecesarias en la imagen que
-se despliega. Añadir las dependencias de prueba directamente a
-`requirements.txt` contradiría esa decisión ya tomada.
+Ejecutar las pruebas dentro de un contenedor (ADR-0011) requiere que `pytest`, `pytest-cov` e `httpx` estén instalados, y que el directorio `tests/` esté presente. El Dockerfile de producción (ADR-0006) fue diseñado deliberadamente para no cargar herramientas innecesarias en la imagen que se despliega. Añadir las dependencias de prueba directamente a `requirements.txt` contradiría esa decisión.
 
 ## Decisión
 
-Se agrega un tercer y cuarto stage al Dockerfile existente:
+Se agregan dos stages adicionales al Dockerfile existente:
 
-- `test-deps`: parte del stage `builder` ya existente y añade las dependencias
-  de `requirements-dev.txt` (que a su vez incluye `requirements.txt`) sobre la
-  misma base.
-- `test`: imagen final de pruebas, construida igual que `runtime` pero
-  copiando el directorio completo del proyecto (incluido `tests/`) y con
-  `pytest` como `CMD`.
+- `test-deps`: parte del stage `builder` ya existente y añade las dependencias de `requirements-dev.txt` (que a su vez incluye `requirements.txt`) sin necesidad de reinstalar las dependencias base.
+- `test`: imagen final de pruebas, construida como `runtime` pero copiando el directorio completo del proyecto (incluido `tests/`) y con `pytest` como `CMD`.
 
-El stage `runtime` (producción) deja de hacer `COPY . .` y pasa a copiar
-explícitamente solo lo que la aplicación necesita en ejecución
-(`app/`, `alembic.ini`, `migrations/`, `entrypoint.sh`). El directorio
-`tests/` deja de estar excluido en `.dockerignore` —ya que ahora sí hace falta
-en el stage de pruebas— y en su lugar la exclusión se logra por la copia
-selectiva del stage `runtime`.
+El stage `runtime` (producción) pasa a copiar explícitamente solo lo que la aplicación necesita en ejecución (`app/`, `alembic.ini`, `migrations/`, `entrypoint.sh`). El directorio `tests/` queda excluido de producción no por `.dockerignore` sino por la copia selectiva del stage.
 
-En `docker-compose.yml`, el servicio `backend-tests` se declara con
-`profiles: ["test"]`, de modo que **no** se levanta con `docker compose up`
-(que debe iniciar únicamente "la solución", tal como exige el enunciado) y solo
-se ejecuta explícitamente con `docker compose run --rm backend-tests`.
+En `docker-compose.yml`, el servicio `backend-tests` se declara con `profiles: ["test"]`, de modo que **no** se levanta con `docker compose up` y solo se ejecuta explícitamente con `docker compose run --rm backend-tests`.
 
 ## Alternativas consideradas
 
 | Alternativa | Por qué se descartó |
 |---|---|
-| Instalar `pytest` y compañía en `requirements.txt` (una sola imagen para todo) | Contradice ADR-0006: la imagen que se despliega cargaría herramientas de prueba en producción, aumentando superficie de ataque y tamaño sin ningún beneficio en ese contexto. |
-| Un `Dockerfile.test` completamente separado | Duplicaría las instrucciones de instalación de dependencias base (`builder`) en dos archivos que tendrían que mantenerse sincronizados. Un único Dockerfile con múltiples *stages*, todos derivando del mismo `builder`, evita esa duplicación. |
-| Ejecutar `docker compose up` con el servicio `backend-tests` sin `profiles` | Correría automáticamente al levantar la solución, mostrándose como un contenedor que se detiene inmediatamente después de correr una vez (`pytest` no es un proceso de larga duración), lo cual es confuso frente al requisito de que `docker compose up --build` levante "la solución" (backend + BD + consumidor), no la suite de pruebas. |
-| Instalar las dependencias de prueba en tiempo de ejecución (`docker compose exec backend pip install pytest && pytest`) | Depende de que el contenedor tenga acceso a Internet en el momento de correr las pruebas y repite la instalación en cada ejecución en lugar de quedar fijada en la imagen; además exigiría permisos de escritura en un directorio que pertenece a `appuser` con `chown` ya aplicado en el build. |
+| Instalar `pytest` en `requirements.txt`, una sola imagen para todo | Contradice ADR-0006: la imagen que se despliega cargaría herramientas de prueba en producción, aumentando la superficie de ataque y el peso de la imagen sin ningún beneficio en ese contexto. |
+| Un `Dockerfile.test` completamente separado | Duplicaría las instrucciones de instalación de dependencias base en dos archivos que tendrían que mantenerse sincronizados. Un único Dockerfile con múltiples stages, todos derivando del mismo `builder`, evita esa duplicación — el costo de compilación del `builder` se paga una sola vez y ambos stages lo reutilizan desde el caché. |
+| El servicio `backend-tests` en Compose sin `profiles` | Correría automáticamente al levantar la solución con `docker compose up` y se vería como un contenedor que termina de inmediato (porque `pytest` no es un proceso de larga duración), lo que confundiría a cualquiera que espere levantar únicamente backend + BD + consumidor. |
+| Instalar dependencias de prueba en tiempo de ejecución (`docker compose exec backend pip install pytest`) | Depende de que el contenedor tenga acceso a Internet en el momento de correr las pruebas, repite la instalación en cada ejecución y requiere permisos de escritura sobre directorios que ya tienen `chown` asignado a `appuser` desde el build. |
 
 ## Consecuencias
 
-**A favor:**
-- La imagen de producción no crece ni un byte por causa de las pruebas: se
-  mantiene la garantía de ADR-0006.
-- Un evaluador ejecuta las pruebas con un único comando adicional y explícito
-  (`docker compose run --rm backend-tests`), sin interferir con
-  `docker compose up --build`.
-- El stage `test` reutiliza exactamente las mismas capas cacheadas del
-  `builder` que ya se construyeron para producción — no hay una segunda
-  instalación completa de `build-essential` ni de las dependencias base.
+**Lo que se gana:**
+- La imagen de producción no crece ni un byte por las pruebas: se mantiene la garantía de ADR-0006.
+- El stage `test` reutiliza exactamente las mismas capas cacheadas del `builder` que ya se construyeron para producción — no hay una segunda instalación completa de `build-essential` ni de las dependencias base.
+- Un evaluador ejecuta las pruebas con un único comando adicional y explícito, sin interferir con la solución en ejecución.
 
-**Costo asumido:**
-- Un Dockerfile más largo, con cuatro *stages* en lugar de dos. Se documenta
-  aquí precisamente para que ese costo de complejidad esté justificado y no
-  sea "porque sí".
+**Lo que se paga:**
+- Un Dockerfile más largo, con cuatro stages en lugar de dos. Se documenta aquí precisamente para que ese costo de complejidad esté justificado y no parezca sobreingeniería.

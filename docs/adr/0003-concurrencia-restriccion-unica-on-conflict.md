@@ -4,33 +4,21 @@
 - **Fecha:** 2026-07-31
 - **Bloque:** 0 (planeación) — implementación en Bloque 2
 
+> **En pocas palabras:** dos peticiones con el mismo `identificador_externo` que llegan al mismo tiempo no pueden producir un duplicado, porque la restricción `UNIQUE` de PostgreSQL lo hace imposible a nivel de motor. La inserción se hace con `ON CONFLICT DO NOTHING RETURNING *`: si no se devuelve ninguna fila, es porque otra petición ganó la carrera y la respuesta correcta es `409 Conflict`.
+
 ## Contexto
 
-El enunciado exige explícitamente: "evitar registros duplicados mediante una
-restricción única sobre el identificador externo" y, por separado, "manejar
-adecuadamente solicitudes concurrentes con el mismo identificador". Son dos
-requisitos relacionados pero distintos: el primero pide un invariante de
-datos; el segundo pide que ese invariante se sostenga incluso cuando dos
-peticiones llegan casi al mismo tiempo con el mismo valor.
+El enunciado exige explícitamente dos cosas relacionadas pero distintas: "evitar registros duplicados mediante una restricción única sobre el identificador externo" (un invariante de datos) y "manejar adecuadamente solicitudes concurrentes con el mismo identificador" (ese invariante debe sostenerse incluso bajo carga).
 
-La forma ingenua de "verificar duplicados" —consultar si existe y luego
-insertar si no— tiene una ventana de tiempo entre la lectura y la escritura
-(TOCTOU: *time-of-check to time-of-use*) en la que otra transacción concurrente
-puede insertar el mismo valor. Bajo carga real, esto produce o bien un
-`IntegrityError` no manejado (500) o, peor, un duplicado real si no hay
-restricción a nivel de base de datos.
+La forma ingenua de resolver esto —hacer un `SELECT` para verificar si ya existe y luego un `INSERT` si no existe— tiene una ventana de tiempo entre la lectura y la escritura que se conoce como **TOCTOU** (*time-of-check to time-of-use*). En esa ventana, otra petición concurrente puede insertar el mismo valor. El resultado es o bien un `IntegrityError` no manejado (un `500` inesperado) o, en el peor caso, un duplicado real si no hay restricción en la base de datos. Es el error más común en pruebas técnicas de este tipo, y exactamente lo que el enunciado pide evitar.
 
 ## Decisión
 
-1. La unicidad se garantiza con una restricción `UNIQUE` real en la columna
-   `identificador_externo` a nivel de base de datos (no solo una validación en
-   la aplicación) — este es el único mecanismo verdaderamente atómico frente a
-   concurrencia, porque lo aplica el motor de la base de datos como parte de
-   la misma operación de escritura.
-2. La inserción se realiza con
+1. La unicidad se garantiza con una restricción `UNIQUE` real en la columna `identificador_externo` a nivel de base de datos. No es solo una validación en la aplicación —eso no sería suficiente bajo concurrencia— sino una garantía que aplica el motor como parte de la misma operación de escritura.
+2. La inserción se realiza con una sola sentencia:
    `INSERT ... ON CONFLICT (identificador_externo) DO NOTHING RETURNING *`
-   en una sola sentencia. Si la fila retornada es `None`, significa que otra
-   transacción ganó la carrera y se responde `409 Conflict`.
+
+   Si la fila retornada es `None`, significa que otra transacción ganó la carrera. El repositorio devuelve `None`; el servicio lo interpreta y lanza `SolicitudDuplicada` → `409 Conflict`.
 
 ```python
 stmt = (
@@ -48,25 +36,16 @@ if fila is None:
 
 | Alternativa | Por qué se descartó |
 |---|---|
-| `SELECT` para verificar existencia, luego `INSERT` si no existe | Vulnerable a TOCTOU: entre el `SELECT` y el `INSERT` otra transacción puede insertar el mismo valor. Es el error más común en pruebas de este tipo y exactamente lo que el enunciado pide evitar. |
-| `INSERT` directo, capturando `IntegrityError` en un `try/except` | Funciona (el `UNIQUE` de la BD sí lo detecta), pero dejar que la excepción de integridad sea el mecanismo de control de flujo normal dispara un `ROLLBACK` completo de la transacción en curso (más costoso y menos explícito que `ON CONFLICT DO NOTHING`, que resuelve el conflicto sin abortar la transacción). Se considera una alternativa razonable de "nivel medio", pero `ON CONFLICT` es más preciso semánticamente: distingue "conflicto de negocio esperado" (se maneja con una fila `None`) de "error de integridad inesperado" (que sí seguiría siendo una excepción real). |
-| Bloqueo pesimista (`SELECT ... FOR UPDATE`) antes de insertar | No aplica directamente a un `INSERT` (no hay fila que bloquear todavía); sería necesario un patrón distinto (p. ej. un advisory lock por hash del identificador externo), que añade complejidad sin beneficio sobre el enfoque atómico de `ON CONFLICT`. |
+| `SELECT` para verificar existencia, luego `INSERT` si no existe | Vulnerable a TOCTOU: entre el `SELECT` y el `INSERT` otra transacción puede insertar el mismo valor. Es exactamente el error que el enunciado pide evitar, y el patrón que aparece en la mayoría de implementaciones incorrectas de este requisito. |
+| `INSERT` directo capturando el `IntegrityError` en un `try/except` | Funciona (el `UNIQUE` sí lo detecta), pero deja que una excepción de integridad sea el mecanismo de control de flujo normal, lo que dispara un `ROLLBACK` completo de la transacción —más costoso que `ON CONFLICT DO NOTHING`, que resuelve el conflicto sin abortar nada. Es una alternativa razonable de "nivel medio", pero `ON CONFLICT` es más preciso: distingue "conflicto de negocio esperado" (fila `None`) de "error de integridad genuino" (que sí seguiría siendo una excepción real). |
+| Bloqueo pesimista (`SELECT ... FOR UPDATE`) antes de insertar | No aplica directamente a un `INSERT` —no hay fila preexistente que bloquear—. Implementarlo requeriría advisory locks por hash del identificador externo, añadiendo complejidad sin ningún beneficio sobre el enfoque atómico que ya ofrece `ON CONFLICT`. |
 
 ## Consecuencias
 
-**A favor:**
-- Un solo *round-trip* a la base de datos por creación, sin necesidad de
-  transacciones explícitas adicionales ni bloqueos manuales.
-- El camino de conflicto es parte del flujo normal de control (`if fila is
-  None`), no una excepción — más fácil de testear de forma determinista con
-  peticiones concurrentes reales.
-- Se puede probar con un test que dispara *N* peticiones concurrentes con el
-  mismo `identificador_externo` y afirma exactamente **1** respuesta `201` y
-  *N−1* respuestas `409`.
+**Lo que se gana:**
+- Un solo round-trip a la base de datos por creación, sin transacciones explícitas adicionales ni locks manuales.
+- El camino de conflicto es parte del flujo normal de control (`if fila is None`), no una excepción — más fácil de testear de forma determinista.
+- Se puede verificar con un test que dispara 20 peticiones concurrentes con el mismo `identificador_externo` y afirma exactamente **1** respuesta `201` y **19** respuestas `409` (está en `tests/test_crear_solicitud.py`).
 
-**Costo asumido:**
-- Acopla el código de inserción a la sintaxis específica de PostgreSQL
-  (`ON CONFLICT` es una extensión de PostgreSQL/SQLite, no SQL estándar). Se
-  acepta porque el enunciado ya fija PostgreSQL como motor; si se migrara de
-  motor, este fragmento puntual necesitaría reescritura (el resto de la capa
-  de repositorio, escrita en SQLAlchemy Core/ORM genérico, no).
+**Lo que se paga:**
+- La sintaxis `ON CONFLICT` es una extensión de PostgreSQL (y SQLite), no SQL estándar. Si se migrara de motor de base de datos, este fragmento puntual necesitaría reescritura. Se acepta porque el enunciado ya fija PostgreSQL como motor — no es una decisión que se tomó sin contexto.

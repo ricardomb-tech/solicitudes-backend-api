@@ -1,0 +1,27 @@
+[project]
+name = "solicitudes-api"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.32.1",
+    "pydantic==2.10.3",
+    "pydantic-settings==2.6.1",
+    "email-validator==2.2.0",
+    "sqlalchemy==2.0.36",
+    "psycopg[binary]==3.2.3",
+    "alembic==1.14.0",
+    "structlog==24.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.0.3",
+    "pytest-cov==6.0.0",
+    "httpx==0.28.1",
+]
+
+[tool.uv]
+# No instala el proyecto como paquete: evita que Python busque un módulo
+# "solicitudes-api" en site-packages y no lo encuentre.
+package = false
